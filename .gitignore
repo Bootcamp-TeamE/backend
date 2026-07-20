@@ -216,3 +216,31 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ===== 프로젝트 추가 (팀 공통 보호: 전역 gitignore에 의존하지 않음) =====
+# Python venv (이 프로젝트 관례)
+.venv-app/
+
+# 로컬 env 오버라이드 (.env.example 은 커밋 유지)
+.env.local
+.env.*.local
+
+# AI / 에이전트 툴링
+.omc/
+.claude/
+CLAUDE.md
+AGENTS.md
+.superpowers/
+.cursor/
+.aider*
+.windsurfrules
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# env: 실제 값 파일은 전부 무시, 템플릿(.example)만 커밋
+.env
+.env.*
+!.env.example
