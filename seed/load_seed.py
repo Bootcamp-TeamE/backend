@@ -17,13 +17,25 @@ from app.database import AsyncSessionLocal, engine
 from app.models.category import Category
 from app.models.market import Market
 from app.models.store import Store
+from app.models.unit import Unit, UnitType
 
 SEED_DIR = Path(__file__).parent
 
+UNITS = [
+    ("piece", "개", "count", 1), ("g", "그램", "weight", 2), ("kg", "킬로그램", "weight", 3),
+    ("geun", "근", "weight", 4), ("mari", "마리", "count", 5), ("son", "손", "count", 6),
+    ("pack", "팩", "count", 7), ("pan", "판", "count", 8), ("bong", "봉", "count", 9),
+    ("dan", "단", "count", 10), ("pogi", "포기", "count", 11), ("songi", "송이", "count", 12),
+    ("box", "박스", "count", 13),
+]
+
+# (code, name_ko, sort_order, default_unit_code)
 CATEGORIES = [
-    ("butcher", "정육", 1), ("seafood", "수산", 2), ("greengrocer", "청과", 3),
-    ("sidedish", "반찬", 4), ("ricecake", "떡", 5), ("tofu_namul", "두부·나물", 6),
-    ("egg_dairy", "계란·유제품", 7), ("streetfood", "시장먹거리", 8), ("flower", "화훼", 9),
+    ("butcher", "정육", 1, "geun"), ("seafood", "수산", 2, "kg"),
+    ("greengrocer", "청과", 3, "kg"), ("sidedish", "반찬", 4, "pack"),
+    ("ricecake", "떡", 5, "pack"), ("tofu_namul", "두부·나물", 6, "piece"),
+    ("egg_dairy", "계란·유제품", 7, "pan"), ("streetfood", "시장먹거리", 8, "piece"),
+    ("flower", "화훼", 9, "songi"),
 ]
 
 
@@ -34,8 +46,12 @@ async def main() -> None:
             print("이미 시드됨 — 중단(중복 방지). 다시 넣으려면 DB를 비우세요.")
             return
 
-        for code, name_ko, order in CATEGORIES:
-            s.add(Category(code=code, name_ko=name_ko, sort_order=order))
+        for code, name_ko, unit_type, order in UNITS:
+            s.add(Unit(code=code, name_ko=name_ko, unit_type=UnitType(unit_type), sort_order=order))
+        await s.flush()
+
+        for code, name_ko, order, default_unit in CATEGORIES:
+            s.add(Category(code=code, name_ko=name_ko, sort_order=order, default_unit_code=default_unit))
         await s.flush()
 
         mid_to_market: dict[str, Market] = {}
