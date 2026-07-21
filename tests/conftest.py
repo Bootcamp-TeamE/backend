@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.models  # noqa: F401
 from app.config import settings
 from app.database import Base, get_session
+from app.events.publisher import FakePublisher, get_publisher
 from app.main import app
 from app.models.unit import Unit, UnitType
 
@@ -45,7 +46,12 @@ async def session(engine) -> AsyncSession:
 
 
 @pytest_asyncio.fixture
-async def client(engine) -> AsyncClient:
+def fake_publisher() -> FakePublisher:
+    return FakePublisher()
+
+
+@pytest_asyncio.fixture
+async def client(engine, fake_publisher) -> AsyncClient:
     maker = async_sessionmaker(engine, expire_on_commit=False)
 
     async def _override_get_session():
@@ -53,6 +59,7 @@ async def client(engine) -> AsyncClient:
             yield s
 
     app.dependency_overrides[get_session] = _override_get_session
+    app.dependency_overrides[get_publisher] = lambda: fake_publisher
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()

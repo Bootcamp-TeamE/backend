@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -7,11 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
 from app.database import get_session
+from app.events.publisher import EventPublisher, get_publisher
 from app.models.order import Order, OrderStatus
 from app.models.sale import Sale, SaleStatus
 from app.models.user import User
 from app.schemas.order import OrderCreate, OrderResponse
 from app.services.order import restore_stock
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["주문"])
 
@@ -97,7 +101,11 @@ async def get_order(order_id: int, session: AsyncSession = Depends(get_session))
 
 
 @router.post("/orders/{order_id}/pay", response_model=OrderResponse, summary="주문 결제")
-async def pay_order(order_id: int, session: AsyncSession = Depends(get_session)) -> Order:
+async def pay_order(
+    order_id: int,
+    session: AsyncSession = Depends(get_session),
+    publisher: EventPublisher = Depends(get_publisher),
+) -> Order:
     order = await session.get(Order, order_id)
     if order is None or order.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
@@ -122,6 +130,13 @@ async def pay_order(order_id: int, session: AsyncSession = Depends(get_session))
 
     await session.commit()
     await session.refresh(order)
+
+    # 알림은 best-effort — 발행 실패해도 결제는 이미 커밋됨. sweep/재조회로 상태 확인 가능.
+    try:
+        await publisher.publish("order.paid", {"order_id": order.id})
+    except Exception:
+        logger.exception("order.paid 이벤트 발행 실패 order_id=%s", order.id)
+
     return order
 
 
