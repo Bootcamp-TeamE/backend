@@ -7,7 +7,7 @@ from app.models.store import Store
 
 
 async def _seed(session: AsyncSession) -> tuple[Market, Store]:
-    session.add(Category(code="butcher", name_ko="정육", sort_order=1))
+    session.add(Category(code="butcher", name_ko="정육", sort_order=1, default_unit_code="piece"))
     market = Market(name="시장", lat=37.5, lng=127.0)
     session.add(market)
     await session.commit()

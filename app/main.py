@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 
-from app.routers import category, market, store
+from app.routers import category, market, sale, search, store, unit
 
 tags_metadata = [
     {"name": "업종", "description": "업종(카테고리) 조회"},
+    {"name": "단위", "description": "판매 단위 조회"},
     {"name": "전통시장", "description": "전통시장 검색·상세·소속 매장"},
     {"name": "매장", "description": "매장 조회·등록"},
+    {"name": "마감세일", "description": "마감세일 등록·조회·조기마감"},
+    {"name": "검색", "description": "반경 내 마감세일 검색"},
     {"name": "시스템", "description": "헬스체크"},
 ]
 
@@ -16,9 +19,12 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
+app.include_router(unit.router, prefix="/api/v1")
 app.include_router(category.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")
 app.include_router(store.router, prefix="/api/v1")
+app.include_router(sale.router, prefix="/api/v1")
+app.include_router(search.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["시스템"], summary="헬스체크")
