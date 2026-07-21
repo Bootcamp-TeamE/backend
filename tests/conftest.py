@@ -71,6 +71,7 @@ async def seed_units(engine):
         s.add_all([
             Unit(code="piece", name_ko="개", unit_type=UnitType.COUNT, sort_order=1),
             Unit(code="g", name_ko="그램", unit_type=UnitType.WEIGHT, sort_order=2),
+            Unit(code="kg", name_ko="킬로그램", unit_type=UnitType.WEIGHT, sort_order=3),
             Unit(code="geun", name_ko="근", unit_type=UnitType.WEIGHT, sort_order=4),
             Unit(code="mari", name_ko="마리", unit_type=UnitType.COUNT, sort_order=5),
             Unit(code="pack", name_ko="팩", unit_type=UnitType.COUNT, sort_order=7),
