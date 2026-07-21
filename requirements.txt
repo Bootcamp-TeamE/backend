@@ -11,3 +11,4 @@ pika
 pytest
 pytest-asyncio
 httpx
+greenlet
