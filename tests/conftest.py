@@ -7,6 +7,7 @@ import app.models  # noqa: F401
 from app.config import settings
 from app.database import Base, get_session
 from app.main import app
+from app.models.unit import Unit, UnitType
 
 
 async def _ensure_test_database() -> None:
@@ -55,3 +56,18 @@ async def client(engine) -> AsyncClient:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def seed_units(engine):
+    async with async_sessionmaker(engine, expire_on_commit=False)() as s:
+        s.add_all([
+            Unit(code="piece", name_ko="개", unit_type=UnitType.COUNT, sort_order=1),
+            Unit(code="g", name_ko="그램", unit_type=UnitType.WEIGHT, sort_order=2),
+            Unit(code="geun", name_ko="근", unit_type=UnitType.WEIGHT, sort_order=4),
+            Unit(code="mari", name_ko="마리", unit_type=UnitType.COUNT, sort_order=5),
+            Unit(code="pack", name_ko="팩", unit_type=UnitType.COUNT, sort_order=7),
+            Unit(code="pan", name_ko="판", unit_type=UnitType.COUNT, sort_order=8),
+            Unit(code="songi", name_ko="송이", unit_type=UnitType.COUNT, sort_order=12),
+        ])
+        await s.commit()

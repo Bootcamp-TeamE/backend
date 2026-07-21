@@ -1,10 +1,12 @@
 from pydantic import BaseModel, ConfigDict
 
+from app.models.unit import UnitType
 
-class CategoryResponse(BaseModel):
+
+class UnitResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     code: str
     name_ko: str
-    default_unit_code: str
+    unit_type: UnitType
     sort_order: int
