@@ -1,0 +1,19 @@
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.category import Category
+
+
+async def test_list_categories_active_sorted(client: AsyncClient, session: AsyncSession):
+    session.add_all([
+        Category(code="butcher", name_ko="정육", sort_order=1),
+        Category(code="flower", name_ko="화훼", sort_order=9),
+        Category(code="hidden", name_ko="비활성", sort_order=5, is_active=False),
+    ])
+    await session.commit()
+
+    resp = await client.get("/api/v1/categories")
+    assert resp.status_code == 200
+    codes = [c["code"] for c in resp.json()]
+    assert codes == ["butcher", "flower"]  # sort_order 순, 비활성 제외
+    assert resp.json()[0]["name_ko"] == "정육"
