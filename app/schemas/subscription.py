@@ -29,7 +29,7 @@ class SubscriptionCreate(BaseModel):
     lng: float
     min_discount_rate: int = 0
     max_price: int | None = None
-    radius_m: int = 2000
+    radius_m: int = 1000
     receive_from: int = 0
     receive_to: int = 24
     push_enabled: bool = True
