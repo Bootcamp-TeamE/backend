@@ -11,6 +11,7 @@ class NotificationResponse(BaseModel):
     id: int
     user_id: int
     order_id: int | None
+    sale_id: int | None
     type: NotificationType
     is_read: bool
     created_at: datetime

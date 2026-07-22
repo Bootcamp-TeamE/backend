@@ -4,6 +4,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.events import bus
+from app.models.notification import Notification, NotificationType
 from app.models.notification_log import NotificationLog
 from app.models.sale import Sale
 from app.models.store import Store
@@ -12,7 +14,9 @@ from app.models.subscription import Subscription
 DAILY_QUOTA = 10
 
 
-async def handle_sale_created(session: AsyncSession, sale_id: int, now: datetime | None = None) -> int:
+async def handle_sale_created(
+    session: AsyncSession, sale_id: int, now: datetime | None = None
+) -> int:
     """sale.created 이벤트 핸들러. 반경·조건이 맞는 구독 유저에게 멱등 발송한다.
 
     매칭은 Postgres에서 수행(반경은 PostGIS ST_DistanceSphere). 유저별 일일 쿼터를 지키고,
@@ -49,6 +53,7 @@ async def handle_sale_created(session: AsyncSession, sale_id: int, now: datetime
 
     day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     sent = 0
+    notified: list[int] = []
     for user_id in user_ids:
         sent_today = (
             await session.execute(
@@ -69,6 +74,13 @@ async def handle_sale_created(session: AsyncSession, sale_id: int, now: datetime
         ).first()
         if inserted is not None:
             sent += 1
+            # 발견 알림도 알림함(notifications)에 기록 → 인앱함·SSE에 노출.
+            session.add(Notification(
+                user_id=user_id, sale_id=sale.id, type=NotificationType.SALE_NEARBY,
+            ))
+            notified.append(user_id)
 
     await session.commit()
+    for user_id in notified:  # 커밋 후 유저 SSE로 push
+        await bus.publish(bus.USER, user_id)
     return sent

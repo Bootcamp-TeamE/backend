@@ -1,6 +1,7 @@
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.events import bus
 from app.models.notification import Notification, NotificationType
 from app.models.order import Order
 
@@ -23,4 +24,6 @@ async def handle_order_paid(session: AsyncSession, order_id: int) -> bool:
     )
     inserted = (await session.execute(stmt)).first()
     await session.commit()
+    if inserted is not None:  # 새 알림만 유저 SSE로 push(멱등)
+        await bus.publish(bus.USER, order.user_id)
     return inserted is not None
