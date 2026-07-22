@@ -51,7 +51,7 @@ async def test_create_subscription_defaults(client: AsyncClient, session: AsyncS
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["radius_m"] == 2000  # 기본 2km
+    assert body["radius_m"] == 1000  # 기본 1km
     assert body["min_discount_rate"] == 0
     assert body["max_price"] is None
 

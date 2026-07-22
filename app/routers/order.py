@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
 from app.database import get_session
+from app.events import bus
 from app.events.publisher import EventPublisher, get_publisher
 from app.models.order import Order, OrderStatus
 from app.models.sale import Sale, SaleStatus
+from app.models.store import Store
 from app.models.user import User
 from app.schemas.order import OrderCreate, OrderResponse
 from app.services.order import restore_stock
@@ -20,6 +22,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["주문"])
 
 RESERVE_HOLD_MINUTES = 10
+
+
+async def _notify_owner_dashboard(session: AsyncSession, sale_id: int) -> None:
+    """주문 변경을 해당 매장 점주의 대시보드 SSE로 깨우기. sale→store→owner 유도."""
+    sale = await session.get(Sale, sale_id)
+    if sale is None:
+        return
+    store = await session.get(Store, sale.store_id)
+    if store is not None and store.owner_id is not None:
+        await bus.publish(bus.DASHBOARD, store.owner_id)
 
 
 @router.post(
@@ -77,6 +89,7 @@ async def create_order(
     session.add(order)
     await session.commit()
     await session.refresh(order)
+    await _notify_owner_dashboard(session, sale.id)
     return order
 
 
@@ -137,6 +150,7 @@ async def pay_order(
     except Exception:
         logger.exception("order.paid 이벤트 발행 실패 order_id=%s", order.id)
 
+    await _notify_owner_dashboard(session, order.sale_id)
     return order
 
 
@@ -164,6 +178,7 @@ async def cancel_order(order_id: int, session: AsyncSession = Depends(get_sessio
     await restore_stock(session, sale_id, quantity)
     await session.commit()
     await session.refresh(order)
+    await _notify_owner_dashboard(session, order.sale_id)
     return order
 
 
@@ -188,4 +203,5 @@ async def pickup_order(order_id: int, session: AsyncSession = Depends(get_sessio
 
     await session.commit()
     await session.refresh(order)
+    await _notify_owner_dashboard(session, order.sale_id)
     return order

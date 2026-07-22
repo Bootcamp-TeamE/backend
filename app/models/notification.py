@@ -8,7 +8,8 @@ from app.models.mixins import TimestampMixin
 
 
 class NotificationType(str, enum.Enum):
-    ORDER_PAID = "order_paid"
+    ORDER_PAID = "order_paid"     # 트랜잭션: 결제 완료
+    SALE_NEARBY = "sale_nearby"   # 발견: 내 주변 마감세일
 
 
 class Notification(Base, TimestampMixin):
@@ -18,6 +19,7 @@ class Notification(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), index=True, nullable=True)
+    sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id"), index=True, nullable=True)
     type: Mapped[NotificationType] = mapped_column(
         SAEnum(NotificationType, name="notification_type"), nullable=False
     )
