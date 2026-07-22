@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,11 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
 from app.database import get_session
+from app.events.publisher import EventPublisher, get_publisher
 from app.models.category import Category
 from app.models.sale import Sale, SaleStatus
 from app.models.store import Store
 from app.models.unit import Unit
 from app.schemas.sale import SaleCreate, SaleResponse, SaleUpdate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["마감세일"])
 
@@ -22,7 +26,10 @@ router = APIRouter(tags=["마감세일"])
     summary="마감세일 등록",
 )
 async def create_sale(
-    store_id: int, payload: SaleCreate, session: AsyncSession = Depends(get_session)
+    store_id: int,
+    payload: SaleCreate,
+    session: AsyncSession = Depends(get_session),
+    publisher: EventPublisher = Depends(get_publisher),
 ) -> Sale:
     store = await session.get(Store, store_id)
     if store is None or store.is_deleted:
@@ -50,6 +57,13 @@ async def create_sale(
     session.add(sale)
     await session.commit()
     await session.refresh(sale)
+
+    # 발견 fanout 알림 트리거. best-effort — 발행 실패해도 세일 등록은 이미 커밋됨.
+    try:
+        await publisher.publish("sale.created", {"sale_id": sale.id})
+    except Exception:
+        logger.exception("sale.created 이벤트 발행 실패 sale_id=%s", sale.id)
+
     return sale
 
 
