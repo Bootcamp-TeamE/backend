@@ -12,7 +12,10 @@ class Store(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     market_id: Mapped[int | None] = mapped_column(ForeignKey("markets.id"), index=True, nullable=True)
-    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    # 1계정=1매장: owner_id는 유일(UNIQUE). NULL은 여러 개 허용(점주 미확정 시드).
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True, unique=True, nullable=True
+    )
     category_code: Mapped[str] = mapped_column(ForeignKey("categories.code"), index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
