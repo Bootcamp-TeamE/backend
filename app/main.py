@@ -2,8 +2,10 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.events import bus
+from app.config import settings
 from app.routers import (
     category,
     market,
@@ -45,6 +47,14 @@ app = FastAPI(
     description="전통시장 마감할인 서비스 API",
     openapi_tags=tags_metadata,
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(unit.router, prefix="/api/v1")
