@@ -3,17 +3,32 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import errors
 from app.database import get_session, get_sessionmaker
 from app.events import bus
+from app.models.store import Store
 from app.schemas.dashboard import DashboardResponse
+from app.schemas.store import StoreResponse
 from app.services.dashboard import compute_dashboard
 
 router = APIRouter(prefix="/owner", tags=["점주"])
 
 KEEPALIVE_SECONDS = 15
+
+
+@router.get("/store", response_model=StoreResponse, summary="내 매장 조회")
+async def owner_store(owner_id: int, session: AsyncSession = Depends(get_session)) -> Store:
+    store = (
+        await session.execute(
+            select(Store).where(Store.owner_id == owner_id, Store.is_deleted.is_(False))
+        )
+    ).scalar_one_or_none()
+    if store is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.STORE_NOT_FOUND)
+    return store
 
 
 @router.get("/dashboard", response_model=DashboardResponse, summary="점주 대시보드 요약 지표")

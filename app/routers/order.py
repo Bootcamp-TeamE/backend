@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
@@ -103,6 +103,23 @@ async def list_orders(
         .order_by(Order.reserved_at.desc())
     )
     return list((await session.execute(stmt)).scalars().all())
+
+
+@router.get("/orders/lookup", response_model=OrderResponse, summary="QR·픽업번호로 주문 조회")
+async def lookup_order(code: str, session: AsyncSession = Depends(get_session)) -> Order:
+    """점주 QR 확인용. qr_token 또는 pickup_no 로 주문을 찾는다.
+    경로 특성상 `/orders/{order_id}` 보다 먼저 선언해야 'lookup'이 int로 파싱되지 않는다."""
+    order = (
+        await session.execute(
+            select(Order).where(
+                or_(Order.qr_token == code, Order.pickup_no == code),
+                Order.is_deleted.is_(False),
+            )
+        )
+    ).scalars().first()
+    if order is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
+    return order
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse, summary="주문·예약 상세")
