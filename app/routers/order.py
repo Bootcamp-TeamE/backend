@@ -183,7 +183,11 @@ async def cancel_order(order_id: int, session: AsyncSession = Depends(get_sessio
 
 
 @router.post("/orders/{order_id}/pickup", response_model=OrderResponse, summary="주문 수령")
-async def pickup_order(order_id: int, session: AsyncSession = Depends(get_session)) -> Order:
+async def pickup_order(
+    order_id: int,
+    session: AsyncSession = Depends(get_session),
+    publisher: EventPublisher = Depends(get_publisher),
+) -> Order:
     order = await session.get(Order, order_id)
     if order is None or order.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
@@ -203,5 +207,12 @@ async def pickup_order(order_id: int, session: AsyncSession = Depends(get_sessio
 
     await session.commit()
     await session.refresh(order)
+
+    # 알림은 best-effort — 발행 실패해도 픽업은 이미 커밋됨.
+    try:
+        await publisher.publish("order.picked_up", {"order_id": order.id})
+    except Exception:
+        logger.exception("order.picked_up 이벤트 발행 실패 order_id=%s", order.id)
+
     await _notify_owner_dashboard(session, order.sale_id)
     return order
