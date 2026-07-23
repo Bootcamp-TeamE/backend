@@ -51,3 +51,12 @@ class SaleResponse(BaseModel):
     @property
     def discount_rate(self) -> int:
         return round((self.normal_price - self.sale_price) / self.normal_price * 100)
+
+
+class SaleSearchResponse(SaleResponse):
+    """반경 검색 결과 — 매장명·거리·좌표를 조인해 함께 내려준다(홈 리스트·지도용)."""
+
+    store_name: str
+    store_distance_m: float | None = None
+    lat: float
+    lng: float
