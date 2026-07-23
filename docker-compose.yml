@@ -43,6 +43,36 @@ services:
       timeout: 5s
       retries: 5
 
+  # 앱은 로컬 uvicorn(핫리로드)으로 돌리고, 워커만 컨테이너로 자동 실행한다.
+  # 컨테이너는 localhost가 아니라 서비스명(postgis/redis/rabbitmq)으로 접속.
+  notification-worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      postgis: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    command: python -m app.workers.notification_worker
+
+  fanout-worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      postgis: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    command: python -m app.workers.fanout_worker
+
 volumes:
   postgis_data:
   rabbitmq_data:
