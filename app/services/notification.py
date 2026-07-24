@@ -43,3 +43,8 @@ async def handle_order_picked_up(session: AsyncSession, order_id: int) -> bool:
     픽업은 점주 QR 확인으로 트리거되므로 구매자에겐 거래 종료 확인 알림이 유용하다.
     """
     return await _create_order_notification(session, order_id, NotificationType.ORDER_PICKED_UP)
+
+
+async def handle_order_refunded(session: AsyncSession, order_id: int) -> bool:
+    """픽업 데드라인 경과로 자동 환불된 주문 — 구매자에게 환불 안내 알림."""
+    return await _create_order_notification(session, order_id, NotificationType.ORDER_REFUNDED)

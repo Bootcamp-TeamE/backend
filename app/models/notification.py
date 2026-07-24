@@ -10,6 +10,7 @@ from app.models.mixins import TimestampMixin
 class NotificationType(str, enum.Enum):
     ORDER_PAID = "order_paid"            # 트랜잭션: 결제 완료
     ORDER_PICKED_UP = "order_picked_up"  # 트랜잭션: 픽업 완료(점주 QR 확인)
+    ORDER_REFUNDED = "order_refunded"    # 트랜잭션: 픽업 데드라인 경과 자동 환불
     SALE_NEARBY = "sale_nearby"          # 발견: 내 주변 마감세일
 
 

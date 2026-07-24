@@ -32,3 +32,4 @@ class OrderResponse(BaseModel):
     expires_at: datetime
     paid_at: datetime | None
     picked_up_at: datetime | None
+    refunded_at: datetime | None

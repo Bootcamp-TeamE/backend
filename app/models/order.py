@@ -14,6 +14,7 @@ class OrderStatus(str, enum.Enum):
     PICKED_UP = "picked_up"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
+    REFUNDED = "refunded"  # 결제 후 픽업 데드라인 경과 → 자동 환불(no-show)
 
 
 class Order(Base, TimestampMixin):
@@ -33,3 +34,4 @@ class Order(Base, TimestampMixin):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
