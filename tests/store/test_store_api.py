@@ -2,8 +2,10 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
+from app.models.favorite import Favorite
 from app.models.market import Market
 from app.models.store import Store
+from app.models.user import Role, User
 
 
 async def _seed(session: AsyncSession) -> tuple[Market, Store]:
@@ -25,6 +27,27 @@ async def test_get_store(client: AsyncClient, session: AsyncSession):
     assert resp.status_code == 200
     assert resp.json()["name"] == "정육점"
     assert resp.json()["category_code"] == "butcher"
+
+
+async def test_get_store_favorite_count_zero(client: AsyncClient, session: AsyncSession):
+    _, store = await _seed(session)
+    resp = await client.get(f"/api/v1/stores/{store.id}")
+    assert resp.status_code == 200
+    assert resp.json()["favorite_count"] == 0
+
+
+async def test_get_store_favorite_count(client: AsyncClient, session: AsyncSession):
+    _, store = await _seed(session)
+    for i in range(2):
+        user = User(email=f"fav{i}@test.local", google_sub=f"fav-{i}", role=Role.USER)
+        session.add(user)
+        await session.flush()
+        session.add(Favorite(user_id=user.id, store_id=store.id))
+    await session.commit()
+
+    resp = await client.get(f"/api/v1/stores/{store.id}")
+    assert resp.status_code == 200
+    assert resp.json()["favorite_count"] == 2
 
 
 async def test_get_store_not_found(client: AsyncClient):

@@ -1,26 +1,36 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
 from app.database import get_session
 from app.models.category import Category
+from app.models.favorite import Favorite
 from app.models.market import Market
 from app.models.sale import Sale
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.sale import SaleResponse
-from app.schemas.store import StoreCreate, StoreResponse, StoreUpdate
+from app.schemas.store import StoreCreate, StoreDetailResponse, StoreResponse, StoreUpdate
 
 router = APIRouter(prefix="/stores", tags=["매장"])
 
 
-@router.get("/{store_id}", response_model=StoreResponse, summary="매장 상세")
-async def get_store(store_id: int, session: AsyncSession = Depends(get_session)) -> Store:
+@router.get("/{store_id}", response_model=StoreDetailResponse, summary="매장 상세")
+async def get_store(
+    store_id: int, session: AsyncSession = Depends(get_session)
+) -> StoreDetailResponse:
     store = await session.get(Store, store_id)
     if store is None or store.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.STORE_NOT_FOUND)
-    return store
+    favorite_count = (
+        await session.execute(
+            select(func.count()).select_from(Favorite).where(Favorite.store_id == store_id)
+        )
+    ).scalar()
+    return StoreDetailResponse(
+        **StoreResponse.model_validate(store).model_dump(), favorite_count=favorite_count
+    )
 
 
 @router.get("/{store_id}/sales", response_model=list[SaleResponse], summary="매장 세일 목록")

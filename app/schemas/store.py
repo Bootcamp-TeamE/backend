@@ -31,3 +31,9 @@ class StoreResponse(BaseModel):
     address: str | None
     lat: float
     lng: float
+
+
+class StoreDetailResponse(StoreResponse):
+    """매장 상세 — 관심 매장 등록 수 포함."""
+
+    favorite_count: int = 0
