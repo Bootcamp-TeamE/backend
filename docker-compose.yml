@@ -73,6 +73,19 @@ services:
       rabbitmq: { condition: service_healthy }
     command: python -m app.workers.fanout_worker
 
+  expiry-worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      postgis: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: python -m app.workers.expiry_worker
+
 volumes:
   postgis_data:
   rabbitmq_data:

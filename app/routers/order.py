@@ -15,13 +15,13 @@ from app.models.sale import Sale, SaleStatus
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.order import OrderCreate, OrderResponse
-from app.services.order import restore_stock
+from app.services.order import expire_order, restore_stock
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["주문"])
 
-RESERVE_HOLD_MINUTES = 10
+RESERVE_HOLD_MINUTES = 5
 
 
 async def _notify_owner_dashboard(session: AsyncSession, sale_id: int) -> None:
@@ -139,6 +139,12 @@ async def pay_order(
     order = await session.get(Order, order_id)
     if order is None or order.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
+
+    # sweep가 아직 안 돌았어도 만료시각이 지난 예약은 결제 불가. 즉시 만료 처리하고 거절.
+    if order.status == OrderStatus.RESERVED and order.expires_at <= datetime.now(timezone.utc):
+        await expire_order(session, order_id)
+        await session.commit()
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=errors.RESERVATION_EXPIRED)
 
     changed = (
         await session.execute(
