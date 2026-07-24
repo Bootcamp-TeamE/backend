@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # 콤마 구분 허용 origin. dev 기본은 Vite. prod는 Vercel 도메인을 .env로 추가.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # 업로드 이미지 저장 경로. 배포 시 Docker 볼륨으로 마운트해 영속화.
+    upload_dir: str = "uploads"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

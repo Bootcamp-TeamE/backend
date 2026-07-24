@@ -13,6 +13,9 @@ services:
         condition: service_started
     ports:
       - "8000:8000"
+    # 업로드 이미지 영속화. 컨테이너 재시작·재배포에도 파일 유지.
+    volumes:
+      - uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   # 이벤트 소비 워커. 앱과 같은 이미지, 실행 명령만 다르다. 죽으면 자동 재시작.
@@ -76,3 +79,4 @@ volumes:
   pgdata:
   redisdata:
   rabbitmqdata:
+  uploads:

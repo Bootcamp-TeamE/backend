@@ -21,6 +21,8 @@ class Sale(Base, TimestampMixin):
     store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), index=True, nullable=False)
     category_code: Mapped[str] = mapped_column(ForeignKey("categories.code"), index=True, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     normal_price: Mapped[int] = mapped_column(Integer, nullable=False)
     sale_price: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_code: Mapped[str] = mapped_column(ForeignKey("units.code"), index=True, nullable=False)

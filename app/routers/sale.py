@@ -45,6 +45,8 @@ async def create_sale(
         store_id=store.id,
         category_code=category_code,
         title=payload.title,
+        description=payload.description,
+        image_url=payload.image_url,
         normal_price=payload.normal_price,
         sale_price=payload.sale_price,
         unit_code=unit_code,

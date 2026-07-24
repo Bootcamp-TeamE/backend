@@ -11,6 +11,8 @@ class SaleCreate(BaseModel):
     sale_price: int
     total_quantity: int
     deadline_at: datetime
+    description: str | None = None
+    image_url: str | None = None  # 미지정 시 프론트가 카테고리 톤 썸네일로 폴백
     category_code: str | None = None  # 미지정 시 매장 카테고리 상속
     unit_code: str | None = None  # 미지정 시 매장 카테고리 기본 단위 상속
     min_order: int = 1
@@ -38,6 +40,8 @@ class SaleResponse(BaseModel):
     store_id: int
     category_code: str
     title: str
+    description: str | None
+    image_url: str | None
     normal_price: int
     sale_price: int
     unit_code: str
