@@ -46,6 +46,29 @@ async def test_create_sale(client: AsyncClient, session: AsyncSession):
     assert body["discount_rate"] == 50
 
 
+async def test_create_sale_with_description_and_image(client: AsyncClient, session: AsyncSession):
+    await _category(session)
+    store = await _store(session)
+    resp = await client.post(
+        f"/api/v1/stores/{store.id}/sales",
+        json=_body(description="신선한 한우입니다", image_url="/uploads/abc.jpg"),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["description"] == "신선한 한우입니다"
+    assert body["image_url"] == "/uploads/abc.jpg"
+
+
+async def test_create_sale_without_description_and_image(client: AsyncClient, session: AsyncSession):
+    await _category(session)
+    store = await _store(session)
+    resp = await client.post(f"/api/v1/stores/{store.id}/sales", json=_body())
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["description"] is None
+    assert body["image_url"] is None
+
+
 async def test_create_sale_bad_prices(client: AsyncClient, session: AsyncSession):
     await _category(session)
     store = await _store(session)

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.events import bus
 from app.config import settings
@@ -18,6 +19,7 @@ from app.routers import (
     store,
     subscription,
     unit,
+    upload,
 )
 
 tags_metadata = [
@@ -63,6 +65,10 @@ app.include_router(category.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")
 app.include_router(store.router, prefix="/api/v1")
 app.include_router(favorite.router, prefix="/api/v1")
+app.include_router(upload.router, prefix="/api/v1")
+
+# 업로드 이미지 정적 서빙. check_dir=False → 디렉토리가 없어도 기동 실패 안 함(첫 업로드 시 생성).
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir, check_dir=False), name="uploads")
 app.include_router(sale.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(order.router, prefix="/api/v1")
