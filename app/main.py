@@ -8,6 +8,7 @@ from app.events import bus
 from app.config import settings
 from app.routers import (
     category,
+    favorite,
     market,
     notification,
     order,
@@ -61,6 +62,7 @@ app.include_router(unit.router, prefix="/api/v1")
 app.include_router(category.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")
 app.include_router(store.router, prefix="/api/v1")
+app.include_router(favorite.router, prefix="/api/v1")
 app.include_router(sale.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(order.router, prefix="/api/v1")
