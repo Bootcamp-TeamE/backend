@@ -120,3 +120,24 @@ async def test_update_subscription_opt_out(client: AsyncClient, session: AsyncSe
 async def test_update_subscription_not_found(client: AsyncClient):
     resp = await client.patch("/api/v1/subscriptions/99999999", json={"opted_out": True})
     assert resp.status_code == 404
+
+
+async def test_delete_subscription(client: AsyncClient, session: AsyncSession):
+    user = await _seed(session)
+    sub_id = (await client.post("/api/v1/subscriptions", json=_body(user.id))).json()["id"]
+    resp = await client.delete(f"/api/v1/subscriptions/{sub_id}")
+    assert resp.status_code == 204
+    listed = await client.get("/api/v1/subscriptions", params={"user_id": user.id})
+    assert listed.json() == []  # 삭제 후 목록에서 사라진다
+
+
+async def test_delete_subscription_not_found(client: AsyncClient):
+    resp = await client.delete("/api/v1/subscriptions/99999999")
+    assert resp.status_code == 404
+
+
+async def test_delete_subscription_idempotent(client: AsyncClient, session: AsyncSession):
+    user = await _seed(session)
+    sub_id = (await client.post("/api/v1/subscriptions", json=_body(user.id))).json()["id"]
+    assert (await client.delete(f"/api/v1/subscriptions/{sub_id}")).status_code == 204
+    assert (await client.delete(f"/api/v1/subscriptions/{sub_id}")).status_code == 404  # 재삭제 no-op
