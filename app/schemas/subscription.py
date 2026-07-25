@@ -23,7 +23,6 @@ def _validate_ranges(
 
 
 class SubscriptionCreate(BaseModel):
-    user_id: int
     categories: list[str]
     lat: float
     lng: float

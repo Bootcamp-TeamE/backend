@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
+from app.core.deps import get_current_user
 from app.database import get_session
 from app.models.category import Category
 from app.models.subscription import Subscription
@@ -31,13 +32,13 @@ async def _ensure_categories_exist(session: AsyncSession, codes: list[str]) -> N
     summary="구독 조건 생성",
 )
 async def create_subscription(
-    payload: SubscriptionCreate, session: AsyncSession = Depends(get_session)
+    payload: SubscriptionCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> Subscription:
-    if await session.get(User, payload.user_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.USER_NOT_FOUND)
     await _ensure_categories_exist(session, payload.categories)
 
-    subscription = Subscription(**payload.model_dump())
+    subscription = Subscription(user_id=current_user.id, **payload.model_dump())
     session.add(subscription)
     await session.commit()
     await session.refresh(subscription)
@@ -46,11 +47,12 @@ async def create_subscription(
 
 @router.get("/subscriptions", response_model=list[SubscriptionResponse], summary="내 구독 목록")
 async def list_subscriptions(
-    user_id: int, session: AsyncSession = Depends(get_session)
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> list[Subscription]:
     stmt = (
         select(Subscription)
-        .where(Subscription.user_id == user_id, Subscription.is_deleted.is_(False))
+        .where(Subscription.user_id == current_user.id, Subscription.is_deleted.is_(False))
         .order_by(Subscription.created_at.desc())
     )
     return list((await session.execute(stmt)).scalars().all())
@@ -64,11 +66,14 @@ async def list_subscriptions(
 async def update_subscription(
     subscription_id: int,
     payload: SubscriptionUpdate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Subscription:
     subscription = await session.get(Subscription, subscription_id)
     if subscription is None or subscription.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.SUBSCRIPTION_NOT_FOUND)
+    if subscription.user_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
 
     changes = payload.model_dump(exclude_unset=True)
     if "categories" in changes:
@@ -87,10 +92,14 @@ async def update_subscription(
     summary="구독 삭제(soft delete)",
 )
 async def delete_subscription(
-    subscription_id: int, session: AsyncSession = Depends(get_session)
+    subscription_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> None:
     subscription = await session.get(Subscription, subscription_id)
     if subscription is None or subscription.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.SUBSCRIPTION_NOT_FOUND)
+    if subscription.user_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
     subscription.is_deleted = True
     await session.commit()

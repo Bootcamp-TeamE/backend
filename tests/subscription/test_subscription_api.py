@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
 from app.models.user import Role, User
+from tests.conftest import auth_headers
 
 
 async def _seed(session: AsyncSession) -> User:
@@ -17,9 +18,8 @@ async def _seed(session: AsyncSession) -> User:
     return user
 
 
-def _body(user_id: int, **over) -> dict:
+def _body(**over) -> dict:
     b = {
-        "user_id": user_id,
         "categories": ["butcher"],
         "lat": 37.58,
         "lng": 127.04,
@@ -33,7 +33,7 @@ def _body(user_id: int, **over) -> dict:
 
 async def test_create_subscription(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    resp = await client.post("/api/v1/subscriptions", json=_body(user.id))
+    resp = await client.post("/api/v1/subscriptions", json=_body(), headers=auth_headers(user))
     assert resp.status_code == 201
     body = resp.json()
     assert body["categories"] == ["butcher"]
@@ -47,7 +47,8 @@ async def test_create_subscription_defaults(client: AsyncClient, session: AsyncS
     user = await _seed(session)
     resp = await client.post(
         "/api/v1/subscriptions",
-        json={"user_id": user.id, "categories": ["butcher"], "lat": 37.58, "lng": 127.04},
+        json={"categories": ["butcher"], "lat": 37.58, "lng": 127.04},
+        headers=auth_headers(user),
     )
     assert resp.status_code == 201
     body = resp.json()
@@ -56,27 +57,31 @@ async def test_create_subscription_defaults(client: AsyncClient, session: AsyncS
     assert body["max_price"] is None
 
 
-async def test_create_subscription_user_not_found(client: AsyncClient, session: AsyncSession):
-    await _seed(session)
-    resp = await client.post("/api/v1/subscriptions", json=_body(99999999))
-    assert resp.status_code == 404
-
-
 async def test_create_subscription_unknown_category(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    resp = await client.post("/api/v1/subscriptions", json=_body(user.id, categories=["butcher", "없음"]))
+    resp = await client.post(
+        "/api/v1/subscriptions",
+        json=_body(categories=["butcher", "없음"]),
+        headers=auth_headers(user),
+    )
     assert resp.status_code == 422
 
 
 async def test_create_subscription_invalid_discount_rate(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    resp = await client.post("/api/v1/subscriptions", json=_body(user.id, min_discount_rate=150))
+    resp = await client.post(
+        "/api/v1/subscriptions", json=_body(min_discount_rate=150), headers=auth_headers(user)
+    )
     assert resp.status_code == 422
 
 
 async def test_create_subscription_invalid_receive_window(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    resp = await client.post("/api/v1/subscriptions", json=_body(user.id, receive_from=20, receive_to=8))
+    resp = await client.post(
+        "/api/v1/subscriptions",
+        json=_body(receive_from=20, receive_to=8),
+        headers=auth_headers(user),
+    )
     assert resp.status_code == 422
 
 
@@ -87,11 +92,15 @@ async def test_list_subscriptions_by_user(client: AsyncClient, session: AsyncSes
     await session.commit()
     await session.refresh(other)
 
-    await client.post("/api/v1/subscriptions", json=_body(user.id, categories=["butcher"]))
-    await client.post("/api/v1/subscriptions", json=_body(user.id, categories=["seafood"]))
-    await client.post("/api/v1/subscriptions", json=_body(other.id))
+    await client.post(
+        "/api/v1/subscriptions", json=_body(categories=["butcher"]), headers=auth_headers(user)
+    )
+    await client.post(
+        "/api/v1/subscriptions", json=_body(categories=["seafood"]), headers=auth_headers(user)
+    )
+    await client.post("/api/v1/subscriptions", json=_body(), headers=auth_headers(other))
 
-    resp = await client.get("/api/v1/subscriptions", params={"user_id": user.id})
+    resp = await client.get("/api/v1/subscriptions", headers=auth_headers(user))
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 2  # 유저당 여러 개 허용, 남의 구독 제외
@@ -100,9 +109,13 @@ async def test_list_subscriptions_by_user(client: AsyncClient, session: AsyncSes
 
 async def test_update_subscription(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    sub_id = (await client.post("/api/v1/subscriptions", json=_body(user.id))).json()["id"]
+    sub_id = (
+        await client.post("/api/v1/subscriptions", json=_body(), headers=auth_headers(user))
+    ).json()["id"]
     resp = await client.patch(
-        f"/api/v1/subscriptions/{sub_id}", json={"min_discount_rate": 50, "push_enabled": False}
+        f"/api/v1/subscriptions/{sub_id}",
+        json={"min_discount_rate": 50, "push_enabled": False},
+        headers=auth_headers(user),
     )
     assert resp.status_code == 200
     assert resp.json()["min_discount_rate"] == 50
@@ -111,33 +124,49 @@ async def test_update_subscription(client: AsyncClient, session: AsyncSession):
 
 async def test_update_subscription_opt_out(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    sub_id = (await client.post("/api/v1/subscriptions", json=_body(user.id))).json()["id"]
-    resp = await client.patch(f"/api/v1/subscriptions/{sub_id}", json={"opted_out": True})
+    sub_id = (
+        await client.post("/api/v1/subscriptions", json=_body(), headers=auth_headers(user))
+    ).json()["id"]
+    resp = await client.patch(
+        f"/api/v1/subscriptions/{sub_id}", json={"opted_out": True}, headers=auth_headers(user)
+    )
     assert resp.status_code == 200
     assert resp.json()["opted_out"] is True
 
 
-async def test_update_subscription_not_found(client: AsyncClient):
-    resp = await client.patch("/api/v1/subscriptions/99999999", json={"opted_out": True})
+async def test_update_subscription_not_found(client: AsyncClient, session: AsyncSession):
+    user = await _seed(session)
+    resp = await client.patch(
+        "/api/v1/subscriptions/99999999", json={"opted_out": True}, headers=auth_headers(user)
+    )
     assert resp.status_code == 404
 
 
 async def test_delete_subscription(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    sub_id = (await client.post("/api/v1/subscriptions", json=_body(user.id))).json()["id"]
-    resp = await client.delete(f"/api/v1/subscriptions/{sub_id}")
+    sub_id = (
+        await client.post("/api/v1/subscriptions", json=_body(), headers=auth_headers(user))
+    ).json()["id"]
+    resp = await client.delete(f"/api/v1/subscriptions/{sub_id}", headers=auth_headers(user))
     assert resp.status_code == 204
-    listed = await client.get("/api/v1/subscriptions", params={"user_id": user.id})
+    listed = await client.get("/api/v1/subscriptions", headers=auth_headers(user))
     assert listed.json() == []  # 삭제 후 목록에서 사라진다
 
 
-async def test_delete_subscription_not_found(client: AsyncClient):
-    resp = await client.delete("/api/v1/subscriptions/99999999")
+async def test_delete_subscription_not_found(client: AsyncClient, session: AsyncSession):
+    user = await _seed(session)
+    resp = await client.delete("/api/v1/subscriptions/99999999", headers=auth_headers(user))
     assert resp.status_code == 404
 
 
 async def test_delete_subscription_idempotent(client: AsyncClient, session: AsyncSession):
     user = await _seed(session)
-    sub_id = (await client.post("/api/v1/subscriptions", json=_body(user.id))).json()["id"]
-    assert (await client.delete(f"/api/v1/subscriptions/{sub_id}")).status_code == 204
-    assert (await client.delete(f"/api/v1/subscriptions/{sub_id}")).status_code == 404  # 재삭제 no-op
+    sub_id = (
+        await client.post("/api/v1/subscriptions", json=_body(), headers=auth_headers(user))
+    ).json()["id"]
+    assert (
+        await client.delete(f"/api/v1/subscriptions/{sub_id}", headers=auth_headers(user))
+    ).status_code == 204
+    assert (
+        await client.delete(f"/api/v1/subscriptions/{sub_id}", headers=auth_headers(user))
+    ).status_code == 404  # 재삭제 no-op
