@@ -64,20 +64,21 @@ async def test_owner_store_not_found(client: AsyncClient, session: AsyncSession)
 
 # ── GET /stores/{id}/sales ──
 
-async def test_list_store_sales_newest_first(client: AsyncClient, session: AsyncSession):
+async def test_list_store_sales_active_soonest_first(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
     sid = (await _create_store(client, owner.id)).json()["id"]
-    for title in ("세일1", "세일2"):
+    # 마감 늦은 것 → 이른 것 순으로 등록. 응답은 마감 임박(이른) 순.
+    for title, deadline in (("세일1", "2030-01-02T00:00:00Z"), ("세일2", "2030-01-01T00:00:00Z")):
         r = await client.post(f"/api/v1/stores/{sid}/sales", json={
             "title": title, "normal_price": 10000, "sale_price": 6000,
-            "total_quantity": 5, "deadline_at": "2030-01-01T00:00:00Z",
+            "total_quantity": 5, "deadline_at": deadline,
         })
         assert r.status_code == 201
     resp = await client.get(f"/api/v1/stores/{sid}/sales")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 2
-    assert data[0]["title"] == "세일2"  # id 내림차순(최신 먼저)
+    assert data[0]["title"] == "세일2"  # 마감 임박 순(활성·미마감만)
 
 
 async def test_list_store_sales_store_not_found(client: AsyncClient):

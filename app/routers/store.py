@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +9,7 @@ from app.database import get_session
 from app.models.category import Category
 from app.models.favorite import Favorite
 from app.models.market import Market
-from app.models.sale import Sale
+from app.models.sale import Sale, SaleStatus
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.sale import SaleResponse
@@ -40,10 +42,16 @@ async def list_store_sales(
     store = await session.get(Store, store_id)
     if store is None or store.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.STORE_NOT_FOUND)
+    # 홈 검색과 동일하게 활성·미마감만(마감된 세일은 '판매 중'에서 제외).
     stmt = (
         select(Sale)
-        .where(Sale.store_id == store_id, Sale.is_deleted.is_(False))
-        .order_by(Sale.id.desc())
+        .where(
+            Sale.store_id == store_id,
+            Sale.is_deleted.is_(False),
+            Sale.status == SaleStatus.ACTIVE,
+            Sale.deadline_at > datetime.now(timezone.utc),
+        )
+        .order_by(Sale.deadline_at)
     )
     return list((await session.execute(stmt)).scalars().all())
 
