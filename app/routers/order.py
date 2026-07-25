@@ -7,6 +7,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
+from app.core.deps import get_current_user
 from app.database import get_session
 from app.events import bus
 from app.events.publisher import EventPublisher, get_publisher
@@ -41,6 +42,14 @@ async def _notify_owner_dashboard(session: AsyncSession, sale_id: int) -> None:
         await bus.publish(bus.DASHBOARD, store.owner_id)
 
 
+async def _is_store_owner_of_order(session: AsyncSession, order: Order, user_id: int) -> bool:
+    sale = await session.get(Sale, order.sale_id)
+    if sale is None:
+        return False
+    store = await session.get(Store, sale.store_id)
+    return store is not None and store.owner_id == user_id
+
+
 @router.post(
     "/orders",
     response_model=OrderResponse,
@@ -48,13 +57,13 @@ async def _notify_owner_dashboard(session: AsyncSession, sale_id: int) -> None:
     summary="주문·예약 생성",
 )
 async def create_order(
-    payload: OrderCreate, session: AsyncSession = Depends(get_session)
+    payload: OrderCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> Order:
     sale = await session.get(Sale, payload.sale_id)
     if sale is None or sale.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.SALE_NOT_FOUND)
-    if await session.get(User, payload.user_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.USER_NOT_FOUND)
     if payload.quantity < sale.min_order:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=errors.BELOW_MIN_ORDER)
 
@@ -85,7 +94,7 @@ async def create_order(
         )
 
     order = Order(
-        user_id=payload.user_id,
+        user_id=current_user.id,
         sale_id=sale.id,
         quantity=payload.quantity,
         total_price=payload.quantity * sale.sale_price,
@@ -104,18 +113,23 @@ async def create_order(
 
 @router.get("/orders", response_model=list[OrderResponse], summary="내 주문·예약 목록")
 async def list_orders(
-    user_id: int, session: AsyncSession = Depends(get_session)
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> list[Order]:
     stmt = (
         select(Order)
-        .where(Order.user_id == user_id, Order.is_deleted.is_(False))
+        .where(Order.user_id == current_user.id, Order.is_deleted.is_(False))
         .order_by(Order.reserved_at.desc())
     )
     return list((await session.execute(stmt)).scalars().all())
 
 
 @router.get("/orders/lookup", response_model=OrderResponse, summary="QR·픽업번호로 주문 조회")
-async def lookup_order(code: str, session: AsyncSession = Depends(get_session)) -> Order:
+async def lookup_order(
+    code: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Order:
     """점주 QR 확인용. qr_token 또는 pickup_no 로 주문을 찾는다.
     경로 특성상 `/orders/{order_id}` 보다 먼저 선언해야 'lookup'이 int로 파싱되지 않는다."""
     order = (
@@ -128,26 +142,41 @@ async def lookup_order(code: str, session: AsyncSession = Depends(get_session)) 
     ).scalars().first()
     if order is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
+    if order.user_id != current_user.id and not await _is_store_owner_of_order(
+        session, order, current_user.id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
     return order
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse, summary="주문·예약 상세")
-async def get_order(order_id: int, session: AsyncSession = Depends(get_session)) -> Order:
+async def get_order(
+    order_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Order:
     order = await session.get(Order, order_id)
     if order is None or order.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
+    if order.user_id != current_user.id and not await _is_store_owner_of_order(
+        session, order, current_user.id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
     return order
 
 
 @router.post("/orders/{order_id}/pay", response_model=OrderResponse, summary="주문 결제")
 async def pay_order(
     order_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     publisher: EventPublisher = Depends(get_publisher),
 ) -> Order:
     order = await session.get(Order, order_id)
     if order is None or order.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
+    if order.user_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
 
     # sweep가 아직 안 돌았어도 만료시각이 지난 예약은 결제 불가. 즉시 만료 처리하고 거절.
     if order.status == OrderStatus.RESERVED and order.expires_at <= datetime.now(timezone.utc):
@@ -191,10 +220,16 @@ async def pay_order(
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderResponse, summary="주문 취소")
-async def cancel_order(order_id: int, session: AsyncSession = Depends(get_session)) -> Order:
+async def cancel_order(
+    order_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Order:
     order = await session.get(Order, order_id)
     if order is None or order.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
+    if order.user_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
 
     # 상태 조건부 전이가 멱등 가드다. 1행일 때만 보상(재고 원복)을 정확히 한 번 수행한다.
     row = (
@@ -222,12 +257,17 @@ async def cancel_order(order_id: int, session: AsyncSession = Depends(get_sessio
 @router.post("/orders/{order_id}/pickup", response_model=OrderResponse, summary="주문 수령")
 async def pickup_order(
     order_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     publisher: EventPublisher = Depends(get_publisher),
 ) -> Order:
     order = await session.get(Order, order_id)
     if order is None or order.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.ORDER_NOT_FOUND)
+    if order.user_id != current_user.id and not await _is_store_owner_of_order(
+        session, order, current_user.id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
 
     changed = (
         await session.execute(
