@@ -86,6 +86,20 @@ services:
       redis: { condition: service_healthy }
     command: python -m app.workers.expiry_worker
 
+  # 즉시 계층: Redis 키 만료 이벤트를 소비해 데드라인 정각에 만료/환불.
+  expiry-listener:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      postgis: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: python -m app.workers.expiry_listener
+
 volumes:
   postgis_data:
   rabbitmq_data:
