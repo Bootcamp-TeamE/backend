@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.events import bus
 from app.config import settings
 from app.routers import (
+    auth,
     category,
     favorite,
     market,
@@ -23,6 +24,7 @@ from app.routers import (
 )
 
 tags_metadata = [
+    {"name": "인증", "description": "구글 로그인·내 정보·개발용 로그인"},
     {"name": "업종", "description": "업종(카테고리) 조회"},
     {"name": "단위", "description": "판매 단위 조회"},
     {"name": "전통시장", "description": "전통시장 검색·상세·소속 매장"},
@@ -60,6 +62,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(unit.router, prefix="/api/v1")
 app.include_router(category.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import app.models  # noqa: F401
 from app.config import settings
+from app.core.security import create_access_token
 from app.database import Base, get_session, get_sessionmaker
 from app.events.publisher import FakePublisher, get_publisher
 from app.main import app
@@ -80,3 +81,8 @@ async def seed_units(engine):
             Unit(code="songi", name_ko="송이", unit_type=UnitType.COUNT, sort_order=12),
         ])
         await s.commit()
+
+
+def auth_headers(user) -> dict[str, str]:
+    """테스트에서 로그인 유저로 요청하기 위한 Authorization 헤더."""
+    return {"Authorization": f"Bearer {create_access_token(user.id, user.role.value)}"}
