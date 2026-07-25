@@ -86,6 +86,19 @@ services:
       redis: { condition: service_healthy }
     command: python -m app.workers.expiry_worker
 
+  # 데모용 세일 생성·재생성. 08~18시 2시간 간격(KST)으로 마감 지난 세일을 되살린다.
+  sale-generator:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      postgis: { condition: service_healthy }
+    command: python -m app.workers.sale_generator_worker
+
   # 즉시 계층: Redis 키 만료 이벤트를 소비해 데드라인 정각에 만료/환불.
   expiry-listener:
     build: .
