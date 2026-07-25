@@ -79,3 +79,18 @@ async def update_subscription(
     await session.commit()
     await session.refresh(subscription)
     return subscription
+
+
+@router.delete(
+    "/subscriptions/{subscription_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="구독 삭제(soft delete)",
+)
+async def delete_subscription(
+    subscription_id: int, session: AsyncSession = Depends(get_session)
+) -> None:
+    subscription = await session.get(Subscription, subscription_id)
+    if subscription is None or subscription.is_deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.SUBSCRIPTION_NOT_FOUND)
+    subscription.is_deleted = True
+    await session.commit()
