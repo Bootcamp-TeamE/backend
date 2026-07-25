@@ -124,3 +124,55 @@ async def sweep_pickup_expired_orders(
 
     await session.commit()
     return refunded
+
+
+# ── 즉시 만료 계층(Redis TTL 키) ──
+# 예약/결제 시 TTL 키를 걸고, 키 만료 이벤트가 오면 아래 디스패처가 멱등 코어를 호출한다.
+# 보장 계층(sweep)과 같은 expire_order/refund_order를 공유하므로 중복 실행돼도 안전.
+
+EXPIRE_KEY_PREFIX = "order:expire:"  # 예약 만료(5분)
+PICKUP_KEY_PREFIX = "order:pickup:"  # 픽업 데드라인(30분) → no-show 환불
+
+
+def reserve_ttl_key(order_id: int) -> str:
+    return f"{EXPIRE_KEY_PREFIX}{order_id}"
+
+
+def pickup_ttl_key(order_id: int) -> str:
+    return f"{PICKUP_KEY_PREFIX}{order_id}"
+
+
+def _parse_expiry_key(key: str) -> tuple[str, int] | None:
+    for kind, prefix in (("expire", EXPIRE_KEY_PREFIX), ("pickup", PICKUP_KEY_PREFIX)):
+        if key.startswith(prefix):
+            try:
+                return kind, int(key[len(prefix):])
+            except ValueError:
+                return None
+    return None
+
+
+async def handle_expired_key(
+    session: AsyncSession, key: str, now: datetime | None = None
+) -> tuple[str, int] | None:
+    """만료된 Redis TTL 키 1개를 처리한다(즉시 계층).
+
+    order:expire:{id} → expire_order, order:pickup:{id} → refund_order.
+    상태 조건부 전이가 멱등 가드라 이미 결제·픽업·취소된 건이면 no-op(None).
+    성공 시 ('expired'|'refunded', order_id) 반환 — 호출자(리스너)가 환불 알림에 사용.
+    우리 키가 아니거나 파싱 불가면 None.
+    """
+    parsed = _parse_expiry_key(key)
+    if parsed is None:
+        return None
+    kind, order_id = parsed
+    if kind == "expire":
+        changed = await expire_order(session, order_id)
+        outcome = ("expired", order_id)
+    else:
+        changed = await refund_order(session, order_id, now=now)
+        outcome = ("refunded", order_id)
+    if not changed:
+        return None
+    await session.commit()
+    return outcome

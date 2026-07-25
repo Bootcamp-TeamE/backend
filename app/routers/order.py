@@ -15,7 +15,14 @@ from app.models.sale import Sale, SaleStatus
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.order import OrderCreate, OrderResponse
-from app.services.order import expire_order, restore_stock
+from app.events.expiry_ttl import arm, disarm
+from app.services.order import (
+    PICKUP_HOLD_MINUTES,
+    expire_order,
+    pickup_ttl_key,
+    reserve_ttl_key,
+    restore_stock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +96,8 @@ async def create_order(
     session.add(order)
     await session.commit()
     await session.refresh(order)
+    # 즉시 만료 계층: 예약 홀드 만료 시각에 맞춰 TTL 키를 건다(best-effort).
+    await arm(reserve_ttl_key(order.id), RESERVE_HOLD_MINUTES * 60)
     await _notify_owner_dashboard(session, sale.id)
     return order
 
@@ -167,6 +176,10 @@ async def pay_order(
     await session.commit()
     await session.refresh(order)
 
+    # 즉시 만료 계층 전환: 예약 만료 키는 해제하고, 픽업 데드라인 키를 새로 건다.
+    await disarm(reserve_ttl_key(order.id))
+    await arm(pickup_ttl_key(order.id), PICKUP_HOLD_MINUTES * 60)
+
     # 알림은 best-effort — 발행 실패해도 결제는 이미 커밋됨. sweep/재조회로 상태 확인 가능.
     try:
         await publisher.publish("order.paid", {"order_id": order.id})
@@ -201,6 +214,7 @@ async def cancel_order(order_id: int, session: AsyncSession = Depends(get_sessio
     await restore_stock(session, sale_id, quantity)
     await session.commit()
     await session.refresh(order)
+    await disarm(reserve_ttl_key(order_id), pickup_ttl_key(order_id))  # 취소 → 만료 키 정리
     await _notify_owner_dashboard(session, order.sale_id)
     return order
 
@@ -230,6 +244,7 @@ async def pickup_order(
 
     await session.commit()
     await session.refresh(order)
+    await disarm(pickup_ttl_key(order_id))  # 픽업 완료 → no-show 환불 키 해제
 
     # 알림은 best-effort — 발행 실패해도 픽업은 이미 커밋됨.
     try:
