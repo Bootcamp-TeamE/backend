@@ -38,17 +38,17 @@ from app.models.store import Store
 from app.models.user import Role, User
 
 MARKET_NAME = "시흥삼미시장"
-STORE_CATEGORY = "greengrocer"  # 청과
+STORE_CATEGORY = "butcher"  # 정육 (수산으로 바꾸려면 "seafood" + 아래 SALE_ITEMS 교체)
 MOCK_OWNER_SUFFIX = "@mock.local"  # 교체 가능한(목데이터) 점주 판별
 SKIP_NAME_TOKENS = ("상인회", "조합", "연합")  # 실제 점포가 아닌 단체명은 건너뜀
 
 SEED_BUYER_EMAIL = "seed-buyer@solde.demo"
 
-# (title, normal_price, sale_price, total_quantity)
+# (title, normal_price, sale_price, total_quantity) — STORE_CATEGORY 에 맞춘 품목
 SALE_ITEMS = [
-    ("상추 한 봉지", 3000, 2000, 10),
-    ("방울토마토 500g", 6000, 3900, 8),
-    ("애호박 2개", 3000, 1900, 12),
+    ("삼겹살 500g", 15000, 9900, 10),
+    ("목살 500g", 13000, 8900, 8),
+    ("한우 국거리 300g", 20000, 13900, 6),
 ]
 
 
