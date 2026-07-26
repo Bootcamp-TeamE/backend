@@ -1,0 +1,14 @@
+http:
+  routers:
+    app:
+      rule: "Host(`api.solde.co.kr`)"
+      entryPoints:
+        - websecure
+      service: app
+      tls:
+        certResolver: le
+  services:
+    app:
+      loadBalancer:
+        servers:
+          - url: "http://app:8000"
