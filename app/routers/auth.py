@@ -35,6 +35,8 @@ async def google_login(
         info = verify_google_id_token(payload.id_token)
     except GoogleTokenError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=errors.INVALID_TOKEN)
+    if not info["email"]:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=errors.INVALID_TOKEN)
 
     user = (
         await session.execute(select(User).where(User.google_sub == info["sub"]))

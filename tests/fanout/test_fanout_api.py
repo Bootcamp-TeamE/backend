@@ -7,19 +7,25 @@ from app.events.publisher import FakePublisher
 from app.models.category import Category
 from app.models.market import Market
 from app.models.store import Store
+from app.models.user import Role, User
+from tests.conftest import auth_headers
 from tests.fanout.helpers import seed_category, seed_subscription, seed_user
 
 
-async def _store(session: AsyncSession, lat: float = 37.58, lng: float = 127.04) -> Store:
+async def _store(session: AsyncSession, lat: float = 37.58, lng: float = 127.04) -> tuple[Store, User]:
     session.add(Category(code="butcher", name_ko="정육", sort_order=1, default_unit_code="geun"))
+    owner = User(email="fanout-owner@test.local", google_sub="fanout-osub", role=Role.OWNER)
+    session.add(owner)
+    await session.flush()
     market = Market(name="시장", lat=lat, lng=lng)
     session.add(market)
     await session.flush()
-    store = Store(market_id=market.id, category_code="butcher", name="정육점", lat=lat, lng=lng)
+    store = Store(market_id=market.id, owner_id=owner.id, category_code="butcher", name="정육점", lat=lat, lng=lng)
     session.add(store)
     await session.commit()
     await session.refresh(store)
-    return store
+    await session.refresh(owner)
+    return store, owner
 
 
 def _sale_body(**over) -> dict:
@@ -34,8 +40,10 @@ def _sale_body(**over) -> dict:
 async def test_sale_creation_publishes_sale_created(
     client: AsyncClient, session: AsyncSession, fake_publisher: FakePublisher
 ):
-    store = await _store(session)
-    resp = await client.post(f"/api/v1/stores/{store.id}/sales", json=_sale_body())
+    store, owner = await _store(session)
+    resp = await client.post(
+        f"/api/v1/stores/{store.id}/sales", json=_sale_body(), headers=auth_headers(owner)
+    )
     assert resp.status_code == 201
     sale_id = resp.json()["id"]
     assert ("sale.created", {"sale_id": sale_id}) in fake_publisher.events

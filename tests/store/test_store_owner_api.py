@@ -67,7 +67,7 @@ async def test_list_store_sales_active_soonest_first(client: AsyncClient, sessio
         r = await client.post(f"/api/v1/stores/{sid}/sales", json={
             "title": title, "normal_price": 10000, "sale_price": 6000,
             "total_quantity": 5, "deadline_at": deadline,
-        })
+        }, headers=auth_headers(owner))
         assert r.status_code == 201
     resp = await client.get(f"/api/v1/stores/{sid}/sales")
     assert resp.status_code == 200

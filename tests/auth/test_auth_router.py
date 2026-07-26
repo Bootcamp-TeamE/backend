@@ -40,6 +40,16 @@ async def test_google_login_rejects_invalid_token(client: AsyncClient, monkeypat
     assert resp.status_code == 401
 
 
+async def test_google_login_missing_email_401(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(
+        google_auth.google_id_token,
+        "verify_oauth2_token",
+        lambda *a, **k: {"sub": "g-noemail", "email": None, "name": "x"},
+    )
+    resp = await client.post("/api/v1/auth/google", json={"id_token": "x"})
+    assert resp.status_code == 401
+
+
 async def test_email_conflict_with_other_sub_409(client: AsyncClient, session: AsyncSession, monkeypatch):
     session.add(User(email="dup@t.local", google_sub="existing-sub", role=Role.USER))
     await session.commit()
