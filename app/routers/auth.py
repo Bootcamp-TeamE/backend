@@ -13,6 +13,10 @@ from app.services.google_auth import GoogleTokenError, verify_google_id_token
 
 router = APIRouter(prefix="/auth", tags=["인증"])
 
+# 배포 데모에서 dev-login으로 진입 가능한 계정 화이트리스트.
+# seed/demo_users.py 로 미리 시딩되어 있어야 하며, 여기서 새로 생성하지 않는다.
+DEMO_ACCOUNTS = frozenset({"buyer@solde.demo", "owner@solde.demo"})
+
 
 async def _get_by_email(session: AsyncSession, email: str | None) -> User | None:
     if not email:
@@ -63,12 +67,10 @@ async def dev_login(
 ) -> TokenResponse:
     if not settings.dev_login:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.FORBIDDEN)
+    if payload.email not in DEMO_ACCOUNTS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
     user = await _get_by_email(session, payload.email)
     if user is None:
-        user = User(
-            email=payload.email, google_sub=f"dev:{payload.email}", name=payload.name, role=Role.USER
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
+        # 데모 계정은 seed/demo_users.py 로 미리 시딩되어 있어야 함(역할·매장 귀속 포함).
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.USER_NOT_FOUND)
     return _token_response(user)

@@ -1,6 +1,7 @@
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.user import Role, User
 from app.services import google_auth
 from tests.conftest import auth_headers
@@ -70,3 +71,41 @@ async def test_me_returns_current_user(client: AsyncClient, session: AsyncSessio
 
 async def test_me_without_token_401(client: AsyncClient):
     assert (await client.get("/api/v1/auth/me")).status_code == 401
+
+
+async def test_dev_login_demo_buyer_seeded(client: AsyncClient, session: AsyncSession, monkeypatch):
+    monkeypatch.setattr(settings, "dev_login", True)
+    user = User(email="buyer@solde.demo", google_sub="demo:buyer", role=Role.USER)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    resp = await client.post("/api/v1/auth/dev-login", json={"email": "buyer@solde.demo"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["access_token"]
+    assert body["user"]["id"] == user.id
+    assert body["user"]["email"] == "buyer@solde.demo"
+
+
+async def test_dev_login_rejects_non_whitelisted_email(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(settings, "dev_login", True)
+
+    resp = await client.post("/api/v1/auth/dev-login", json={"email": "stranger@evil.com"})
+
+    assert resp.status_code == 403
+
+
+async def test_dev_login_whitelisted_but_not_seeded_404(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(settings, "dev_login", True)
+
+    resp = await client.post("/api/v1/auth/dev-login", json={"email": "buyer@solde.demo"})
+
+    assert resp.status_code == 404
+
+
+async def test_dev_login_disabled_by_default_404(client: AsyncClient):
+    resp = await client.post("/api/v1/auth/dev-login", json={"email": "buyer@solde.demo"})
+
+    assert resp.status_code == 404
