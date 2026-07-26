@@ -1,0 +1,93 @@
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.category import Category
+from app.models.favorite import Favorite
+from app.models.market import Market
+from app.models.store import Store
+from app.models.user import Role, User
+from tests.conftest import auth_headers
+
+
+async def _seed(session: AsyncSession) -> tuple[Market, Store]:
+    session.add(Category(code="butcher", name_ko="정육", sort_order=1, default_unit_code="piece"))
+    market = Market(name="시장", lat=37.5, lng=127.0)
+    session.add(market)
+    await session.commit()
+    await session.refresh(market)
+    store = Store(market_id=market.id, category_code="butcher", name="정육점", lat=37.5, lng=127.0)
+    session.add(store)
+    await session.commit()
+    await session.refresh(store)
+    return market, store
+
+
+async def _seed_user(session: AsyncSession, i: int = 1) -> User:
+    user = User(email=f"api{i}@test.local", google_sub=f"api-sub-{i}", role=Role.USER)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def test_get_store(client: AsyncClient, session: AsyncSession):
+    _, store = await _seed(session)
+    resp = await client.get(f"/api/v1/stores/{store.id}")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "정육점"
+    assert resp.json()["category_code"] == "butcher"
+
+
+async def test_get_store_favorite_count_zero(client: AsyncClient, session: AsyncSession):
+    _, store = await _seed(session)
+    resp = await client.get(f"/api/v1/stores/{store.id}")
+    assert resp.status_code == 200
+    assert resp.json()["favorite_count"] == 0
+
+
+async def test_get_store_favorite_count(client: AsyncClient, session: AsyncSession):
+    _, store = await _seed(session)
+    for i in range(2):
+        user = User(email=f"fav{i}@test.local", google_sub=f"fav-{i}", role=Role.USER)
+        session.add(user)
+        await session.flush()
+        session.add(Favorite(user_id=user.id, store_id=store.id))
+    await session.commit()
+
+    resp = await client.get(f"/api/v1/stores/{store.id}")
+    assert resp.status_code == 200
+    assert resp.json()["favorite_count"] == 2
+
+
+async def test_get_store_not_found(client: AsyncClient):
+    resp = await client.get("/api/v1/stores/99999999")
+    assert resp.status_code == 404
+
+
+async def test_create_store(client: AsyncClient, session: AsyncSession):
+    market, _ = await _seed(session)
+    user = await _seed_user(session)
+    resp = await client.post("/api/v1/stores", json={
+        "category_code": "butcher", "name": "새정육", "lat": 37.5, "lng": 127.0, "market_id": market.id,
+    }, headers=auth_headers(user))
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == user.id  # 등록 시 로그인 유저에 귀속
+    assert resp.json()["name"] == "새정육"
+
+
+async def test_create_store_unknown_category(client: AsyncClient, session: AsyncSession):
+    await _seed(session)
+    user = await _seed_user(session)
+    resp = await client.post("/api/v1/stores", json={
+        "category_code": "없음", "name": "x", "lat": 37.5, "lng": 127.0,
+    }, headers=auth_headers(user))
+    assert resp.status_code == 422
+
+
+async def test_create_store_market_not_found(client: AsyncClient, session: AsyncSession):
+    await _seed(session)
+    user = await _seed_user(session)
+    resp = await client.post("/api/v1/stores", json={
+        "category_code": "butcher", "name": "x", "lat": 37.5, "lng": 127.0, "market_id": 99999999,
+    }, headers=auth_headers(user))
+    assert resp.status_code == 404

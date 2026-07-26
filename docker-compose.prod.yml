@@ -1,5 +1,25 @@
-# 배포용 풀스택. 실행: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 services:
+  traefik:
+    image: traefik:v3.1
+    restart: always
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+
   app:
     build: .
     restart: always
@@ -11,9 +31,43 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
+    volumes:
+      - uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`api.solde.co.kr`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=le"
+      - "traefik.http.services.app.loadbalancer.server.port=8000"
+
+  notification-worker:
+    build: .
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    command: python -m app.workers.notification_worker
+
+  fanout-worker:
+    build: .
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    command: python -m app.workers.fanout_worker
 
   postgis:
     image: postgis/postgis:16-3.4
@@ -49,3 +103,5 @@ volumes:
   pgdata:
   redisdata:
   rabbitmqdata:
+  uploads:
+  letsencrypt:

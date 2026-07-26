@@ -17,3 +17,9 @@ class Base(DeclarativeBase):
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
+
+
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    """세션 팩토리 자체를 주입. SSE처럼 요청 세션을 오래 붙잡으면 안 되는 곳에서
+    스냅샷마다 짧은 세션을 열고 닫기 위해 사용(테스트에서 오버라이드 가능)."""
+    return AsyncSessionLocal

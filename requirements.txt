@@ -11,3 +11,7 @@ pika
 pytest
 pytest-asyncio
 httpx
+greenlet
+python-multipart==0.0.20
+google-auth
+requests
