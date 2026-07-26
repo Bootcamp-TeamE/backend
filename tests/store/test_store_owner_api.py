@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.models.store import Store
 from app.models.user import Role, User
+from tests.conftest import auth_headers
 
 
 async def _seed_owner(session: AsyncSession, i: int = 1) -> User:
@@ -15,41 +16,36 @@ async def _seed_owner(session: AsyncSession, i: int = 1) -> User:
     return user
 
 
-async def _create_store(client: AsyncClient, owner_id: int, name: str = "정육점") -> dict:
+async def _create_store(client: AsyncClient, owner: User, name: str = "정육점") -> dict:
     resp = await client.post("/api/v1/stores", json={
-        "category_code": "butcher", "name": name, "lat": 37.5, "lng": 127.0, "owner_id": owner_id,
-    })
+        "category_code": "butcher", "name": name, "lat": 37.5, "lng": 127.0,
+    }, headers=auth_headers(owner))
     return resp
 
 
-# ── POST /stores owner_id 바인딩 ──
+# ── POST /stores owner 바인딩 ──
 
 async def test_create_store_binds_owner(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
-    resp = await _create_store(client, owner.id)
+    resp = await _create_store(client, owner)
     assert resp.status_code == 201
     assert resp.json()["owner_id"] == owner.id
 
 
 async def test_create_store_duplicate_owner_conflict(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
-    assert (await _create_store(client, owner.id)).status_code == 201
+    assert (await _create_store(client, owner)).status_code == 201
     # 1계정=1매장 — 두 번째 등록은 거절
-    dup = await _create_store(client, owner.id, name="둘째")
+    dup = await _create_store(client, owner, name="둘째")
     assert dup.status_code == 409
 
 
-async def test_create_store_unknown_owner_not_found(client: AsyncClient, session: AsyncSession):
-    await _seed_owner(session)
-    resp = await _create_store(client, owner_id=99999999)
-    assert resp.status_code == 404
-
-
 # ── GET /owner/store ──
+# NOTE: /owner/store는 Task 10에서 인증화 예정. 여기서는 임시로 owner_id 쿼리 그대로 유지.
 
 async def test_owner_store_found(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
-    created = await _create_store(client, owner.id)
+    created = await _create_store(client, owner)
     resp = await client.get("/api/v1/owner/store", params={"owner_id": owner.id})
     assert resp.status_code == 200
     assert resp.json()["id"] == created.json()["id"]
@@ -66,7 +62,7 @@ async def test_owner_store_not_found(client: AsyncClient, session: AsyncSession)
 
 async def test_list_store_sales_active_soonest_first(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
-    sid = (await _create_store(client, owner.id)).json()["id"]
+    sid = (await _create_store(client, owner)).json()["id"]
     # 마감 늦은 것 → 이른 것 순으로 등록. 응답은 마감 임박(이른) 순.
     for title, deadline in (("세일1", "2030-01-02T00:00:00Z"), ("세일2", "2030-01-01T00:00:00Z")):
         r = await client.post(f"/api/v1/stores/{sid}/sales", json={
@@ -90,19 +86,26 @@ async def test_list_store_sales_store_not_found(client: AsyncClient):
 
 async def test_patch_store_name(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
-    sid = (await _create_store(client, owner.id)).json()["id"]
-    resp = await client.patch(f"/api/v1/stores/{sid}", json={"name": "수정된정육"})
+    sid = (await _create_store(client, owner)).json()["id"]
+    resp = await client.patch(
+        f"/api/v1/stores/{sid}", json={"name": "수정된정육"}, headers=auth_headers(owner)
+    )
     assert resp.status_code == 200
     assert resp.json()["name"] == "수정된정육"
 
 
 async def test_patch_store_unknown_category(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
-    sid = (await _create_store(client, owner.id)).json()["id"]
-    resp = await client.patch(f"/api/v1/stores/{sid}", json={"category_code": "없음"})
+    sid = (await _create_store(client, owner)).json()["id"]
+    resp = await client.patch(
+        f"/api/v1/stores/{sid}", json={"category_code": "없음"}, headers=auth_headers(owner)
+    )
     assert resp.status_code == 422
 
 
-async def test_patch_store_not_found(client: AsyncClient):
-    resp = await client.patch("/api/v1/stores/99999999", json={"name": "x"})
+async def test_patch_store_not_found(client: AsyncClient, session: AsyncSession):
+    user = await _seed_owner(session)
+    resp = await client.patch(
+        "/api/v1/stores/99999999", json={"name": "x"}, headers=auth_headers(user)
+    )
     assert resp.status_code == 404

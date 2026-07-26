@@ -6,6 +6,7 @@ from app.models.favorite import Favorite
 from app.models.market import Market
 from app.models.store import Store
 from app.models.user import Role, User
+from tests.conftest import auth_headers
 
 
 async def _seed(session: AsyncSession) -> tuple[Market, Store]:
@@ -19,6 +20,14 @@ async def _seed(session: AsyncSession) -> tuple[Market, Store]:
     await session.commit()
     await session.refresh(store)
     return market, store
+
+
+async def _seed_user(session: AsyncSession, i: int = 1) -> User:
+    user = User(email=f"api{i}@test.local", google_sub=f"api-sub-{i}", role=Role.USER)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
 
 
 async def test_get_store(client: AsyncClient, session: AsyncSession):
@@ -57,25 +66,28 @@ async def test_get_store_not_found(client: AsyncClient):
 
 async def test_create_store(client: AsyncClient, session: AsyncSession):
     market, _ = await _seed(session)
+    user = await _seed_user(session)
     resp = await client.post("/api/v1/stores", json={
         "category_code": "butcher", "name": "새정육", "lat": 37.5, "lng": 127.0, "market_id": market.id,
-    })
+    }, headers=auth_headers(user))
     assert resp.status_code == 201
-    assert resp.json()["owner_id"] is None  # 인증 없이 생성
+    assert resp.json()["owner_id"] == user.id  # 등록 시 로그인 유저에 귀속
     assert resp.json()["name"] == "새정육"
 
 
 async def test_create_store_unknown_category(client: AsyncClient, session: AsyncSession):
     await _seed(session)
+    user = await _seed_user(session)
     resp = await client.post("/api/v1/stores", json={
         "category_code": "없음", "name": "x", "lat": 37.5, "lng": 127.0,
-    })
+    }, headers=auth_headers(user))
     assert resp.status_code == 422
 
 
 async def test_create_store_market_not_found(client: AsyncClient, session: AsyncSession):
     await _seed(session)
+    user = await _seed_user(session)
     resp = await client.post("/api/v1/stores", json={
         "category_code": "butcher", "name": "x", "lat": 37.5, "lng": 127.0, "market_id": 99999999,
-    })
+    }, headers=auth_headers(user))
     assert resp.status_code == 404
