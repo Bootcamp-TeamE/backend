@@ -29,3 +29,23 @@ async def test_subscription_scoped_to_user(client: AsyncClient, session: AsyncSe
     await client.post("/api/v1/subscriptions", json=_BODY, headers=auth_headers(a))
     assert len((await client.get("/api/v1/subscriptions", headers=auth_headers(a))).json()) == 1
     assert (await client.get("/api/v1/subscriptions", headers=auth_headers(b))).json() == []
+
+
+async def test_cannot_patch_others_subscription(client: AsyncClient, session: AsyncSession):
+    a, b = await _user(session, 3), await _user(session, 4)
+    resp = await client.post("/api/v1/subscriptions", json=_BODY, headers=auth_headers(a))
+    sub_id = resp.json()["id"]
+    patch_resp = await client.patch(
+        f"/api/v1/subscriptions/{sub_id}", json={"opted_out": True}, headers=auth_headers(b)
+    )
+    assert patch_resp.status_code == 403
+
+
+async def test_cannot_delete_others_subscription(client: AsyncClient, session: AsyncSession):
+    a, b = await _user(session, 5), await _user(session, 6)
+    resp = await client.post("/api/v1/subscriptions", json=_BODY, headers=auth_headers(a))
+    sub_id = resp.json()["id"]
+    delete_resp = await client.delete(
+        f"/api/v1/subscriptions/{sub_id}", headers=auth_headers(b)
+    )
+    assert delete_resp.status_code == 403
