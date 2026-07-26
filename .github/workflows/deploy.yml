@@ -1,11 +1,9 @@
 name: Deploy to EC2
 
-# main 에 코드가 올라오면 EC2 로 SSH 접속해 최신 코드로 재배포.
-# 최초 배포(.env.prod 작성·시드·점주 승격)는 수동으로 1회 끝낸 뒤부터 이 워크플로가 동작한다.
 on:
   push:
     branches: [main]
-  workflow_dispatch: # Actions 탭에서 수동 실행도 허용
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -21,6 +19,9 @@ jobs:
             set -e
             cd ~/solde-backend
             git pull origin main
+            cat > .env.prod <<'ENVEOF'
+            ${{ secrets.ENV_PROD }}
+            ENVEOF
             docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
             docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T app alembic upgrade head
             docker image prune -f
