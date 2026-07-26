@@ -2,11 +2,8 @@ services:
   traefik:
     image: traefik:v3.1
     restart: always
-    environment:
-      - DOCKER_API_VERSION=1.44
     command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
@@ -19,7 +16,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
       - letsencrypt:/letsencrypt
 
   app:
@@ -38,12 +35,6 @@ services:
     volumes:
       - uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`api.solde.co.kr`)"
-      - "traefik.http.routers.app.entrypoints=websecure"
-      - "traefik.http.routers.app.tls.certresolver=le"
-      - "traefik.http.services.app.loadbalancer.server.port=8000"
 
   notification-worker:
     build: .
