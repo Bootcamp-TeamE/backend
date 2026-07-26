@@ -41,12 +41,11 @@ async def test_create_store_duplicate_owner_conflict(client: AsyncClient, sessio
 
 
 # ── GET /owner/store ──
-# NOTE: /owner/store는 Task 10에서 인증화 예정. 여기서는 임시로 owner_id 쿼리 그대로 유지.
 
 async def test_owner_store_found(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
     created = await _create_store(client, owner)
-    resp = await client.get("/api/v1/owner/store", params={"owner_id": owner.id})
+    resp = await client.get("/api/v1/owner/store", headers=auth_headers(owner))
     assert resp.status_code == 200
     assert resp.json()["id"] == created.json()["id"]
     assert resp.json()["owner_id"] == owner.id
@@ -54,7 +53,7 @@ async def test_owner_store_found(client: AsyncClient, session: AsyncSession):
 
 async def test_owner_store_not_found(client: AsyncClient, session: AsyncSession):
     owner = await _seed_owner(session)
-    resp = await client.get("/api/v1/owner/store", params={"owner_id": owner.id})
+    resp = await client.get("/api/v1/owner/store", headers=auth_headers(owner))
     assert resp.status_code == 404
 
 
