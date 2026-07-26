@@ -4,6 +4,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sale import Sale, SaleStatus
+from tests.conftest import auth_headers
 from tests.order.helpers import seed_sale, seed_user
 
 
@@ -14,7 +15,9 @@ async def test_no_oversell_under_concurrency(client: AsyncClient, session: Async
 
     async def reserve():
         return await client.post(
-            "/api/v1/orders", json={"user_id": user.id, "sale_id": sale.id, "quantity": 1}
+            "/api/v1/orders",
+            json={"sale_id": sale.id, "quantity": 1},
+            headers=auth_headers(user),
         )
 
     responses = await asyncio.gather(*[reserve() for _ in range(20)])

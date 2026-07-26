@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.models.store import Store
 from app.models.user import Role, User
+from tests.conftest import auth_headers
 
 
 async def _seed(session: AsyncSession) -> tuple[User, Store]:
@@ -20,10 +21,10 @@ async def _seed(session: AsyncSession) -> tuple[User, Store]:
 
 async def test_add_favorite_then_list(client: AsyncClient, session: AsyncSession):
     user, store = await _seed(session)
-    add = await client.post(f"/api/v1/stores/{store.id}/favorite", json={"user_id": user.id})
+    add = await client.post(f"/api/v1/stores/{store.id}/favorite", headers=auth_headers(user))
     assert add.status_code == 201
 
-    resp = await client.get("/api/v1/favorites", params={"user_id": user.id})
+    resp = await client.get("/api/v1/favorites", headers=auth_headers(user))
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
@@ -33,24 +34,24 @@ async def test_add_favorite_then_list(client: AsyncClient, session: AsyncSession
 
 async def test_add_favorite_idempotent(client: AsyncClient, session: AsyncSession):
     user, store = await _seed(session)
-    await client.post(f"/api/v1/stores/{store.id}/favorite", json={"user_id": user.id})
-    again = await client.post(f"/api/v1/stores/{store.id}/favorite", json={"user_id": user.id})
+    await client.post(f"/api/v1/stores/{store.id}/favorite", headers=auth_headers(user))
+    again = await client.post(f"/api/v1/stores/{store.id}/favorite", headers=auth_headers(user))
     assert again.status_code == 201  # 멱등 — 중복이어도 성공
 
-    resp = await client.get("/api/v1/favorites", params={"user_id": user.id})
+    resp = await client.get("/api/v1/favorites", headers=auth_headers(user))
     assert len(resp.json()) == 1  # 한 번만 등록
 
 
 async def test_remove_favorite(client: AsyncClient, session: AsyncSession):
     user, store = await _seed(session)
-    await client.post(f"/api/v1/stores/{store.id}/favorite", json={"user_id": user.id})
+    await client.post(f"/api/v1/stores/{store.id}/favorite", headers=auth_headers(user))
 
     rm = await client.request(
-        "DELETE", f"/api/v1/stores/{store.id}/favorite", params={"user_id": user.id}
+        "DELETE", f"/api/v1/stores/{store.id}/favorite", headers=auth_headers(user)
     )
     assert rm.status_code == 204
 
-    resp = await client.get("/api/v1/favorites", params={"user_id": user.id})
+    resp = await client.get("/api/v1/favorites", headers=auth_headers(user))
     assert resp.json() == []
 
 
@@ -58,25 +59,19 @@ async def test_remove_favorite_idempotent(client: AsyncClient, session: AsyncSes
     user, store = await _seed(session)
     # 등록 안 한 상태에서 삭제 — 에러 없이 204
     rm = await client.request(
-        "DELETE", f"/api/v1/stores/{store.id}/favorite", params={"user_id": user.id}
+        "DELETE", f"/api/v1/stores/{store.id}/favorite", headers=auth_headers(user)
     )
     assert rm.status_code == 204
 
 
 async def test_favorite_store_not_found(client: AsyncClient, session: AsyncSession):
     user, _ = await _seed(session)
-    resp = await client.post("/api/v1/stores/99999999/favorite", json={"user_id": user.id})
-    assert resp.status_code == 404
-
-
-async def test_favorite_user_not_found(client: AsyncClient, session: AsyncSession):
-    _, store = await _seed(session)
-    resp = await client.post(f"/api/v1/stores/{store.id}/favorite", json={"user_id": 99999999})
+    resp = await client.post("/api/v1/stores/99999999/favorite", headers=auth_headers(user))
     assert resp.status_code == 404
 
 
 async def test_list_favorites_empty(client: AsyncClient, session: AsyncSession):
     user, _ = await _seed(session)
-    resp = await client.get("/api/v1/favorites", params={"user_id": user.id})
+    resp = await client.get("/api/v1/favorites", headers=auth_headers(user))
     assert resp.status_code == 200
     assert resp.json() == []

@@ -15,6 +15,7 @@ from tests.fanout.helpers import (
     seed_subscription,
     seed_user as seed_fanout_user,
 )
+from tests.conftest import auth_headers
 from tests.notification.test_notification_service import _paid_order
 from tests.order.helpers import seed_sale, seed_user
 
@@ -43,7 +44,7 @@ async def test_fanout_notification_in_feed(client: AsyncClient, session: AsyncSe
     assert await handle_sale_created(session, sale.id, now=NOW) == 1
 
     # 발견 알림이 인앱 알림함에 뜬다.
-    body = (await client.get("/api/v1/notifications", params={"user_id": user.id})).json()
+    body = (await client.get("/api/v1/notifications", headers=auth_headers(user))).json()
     assert len(body) == 1
     assert body[0]["type"] == "sale_nearby"
     assert body[0]["sale_id"] == sale.id

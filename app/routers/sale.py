@@ -6,12 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
+from app.core.deps import get_current_owner
 from app.database import get_session
 from app.events.publisher import EventPublisher, get_publisher
 from app.models.category import Category
 from app.models.sale import Sale, SaleStatus
 from app.models.store import Store
 from app.models.unit import Unit
+from app.models.user import User
 from app.schemas.sale import SaleCreate, SaleResponse, SaleUpdate
 
 logger = logging.getLogger(__name__)
@@ -30,10 +32,13 @@ async def create_sale(
     payload: SaleCreate,
     session: AsyncSession = Depends(get_session),
     publisher: EventPublisher = Depends(get_publisher),
+    current_owner: User = Depends(get_current_owner),
 ) -> Sale:
     store = await session.get(Store, store_id)
     if store is None or store.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.STORE_NOT_FOUND)
+    if store.owner_id != current_owner.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
     category_code = payload.category_code or store.category_code
     category = await session.get(Category, category_code)
     if category is None:
@@ -94,11 +99,17 @@ async def list_sales(
 
 @router.patch("/sales/{sale_id}", response_model=SaleResponse, summary="마감세일 수정(추가 할인·조기 마감)")
 async def update_sale(
-    sale_id: int, payload: SaleUpdate, session: AsyncSession = Depends(get_session)
+    sale_id: int,
+    payload: SaleUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_owner: User = Depends(get_current_owner),
 ) -> Sale:
     sale = await session.get(Sale, sale_id)
     if sale is None or sale.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.SALE_NOT_FOUND)
+    store = await session.get(Store, sale.store_id)
+    if store is None or store.owner_id != current_owner.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
     if payload.sale_price is not None:
         if payload.sale_price <= 0 or payload.sale_price >= sale.normal_price:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=errors.INVALID_SALE_PRICE)

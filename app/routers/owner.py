@@ -7,9 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import errors
+from app.core.deps import get_current_owner, get_user_from_query_token
 from app.database import get_session, get_sessionmaker
 from app.events import bus
 from app.models.store import Store
+from app.models.user import Role, User
 from app.schemas.dashboard import DashboardResponse
 from app.schemas.store import StoreResponse
 from app.services.dashboard import compute_dashboard
@@ -20,10 +22,12 @@ KEEPALIVE_SECONDS = 15
 
 
 @router.get("/store", response_model=StoreResponse, summary="내 매장 조회")
-async def owner_store(owner_id: int, session: AsyncSession = Depends(get_session)) -> Store:
+async def owner_store(
+    owner: User = Depends(get_current_owner), session: AsyncSession = Depends(get_session)
+) -> Store:
     store = (
         await session.execute(
-            select(Store).where(Store.owner_id == owner_id, Store.is_deleted.is_(False))
+            select(Store).where(Store.owner_id == owner.id, Store.is_deleted.is_(False))
         )
     ).scalar_one_or_none()
     if store is None:
@@ -33,9 +37,9 @@ async def owner_store(owner_id: int, session: AsyncSession = Depends(get_session
 
 @router.get("/dashboard", response_model=DashboardResponse, summary="점주 대시보드 요약 지표")
 async def owner_dashboard(
-    owner_id: int, session: AsyncSession = Depends(get_session)
+    owner: User = Depends(get_current_owner), session: AsyncSession = Depends(get_session)
 ) -> dict:
-    data = await compute_dashboard(session, owner_id)
+    data = await compute_dashboard(session, owner.id)
     if data is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.STORE_NOT_FOUND)
     return data
@@ -43,14 +47,17 @@ async def owner_dashboard(
 
 @router.get("/dashboard/stream", summary="점주 대시보드 SSE 실시간")
 async def owner_dashboard_stream(
-    owner_id: int,
+    owner: User = Depends(get_user_from_query_token),
     maker: async_sessionmaker[AsyncSession] = Depends(get_sessionmaker),
 ) -> StreamingResponse:
+    # SSE는 쿼리 토큰 인증이라 get_current_owner를 못 쓴다 — role 검사를 함수 안에서 직접 한다.
+    if owner.role != Role.OWNER:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.OWNER_ONLY)
     # 스트림 시작 후엔 404를 낼 수 없으므로 연결 전에 매장 존재를 확인(짧은 세션).
     async with maker() as session:
-        if await compute_dashboard(session, owner_id) is None:
+        if await compute_dashboard(session, owner.id) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.STORE_NOT_FOUND)
-    return StreamingResponse(_dashboard_events(owner_id, maker), media_type="text/event-stream")
+    return StreamingResponse(_dashboard_events(owner.id, maker), media_type="text/event-stream")
 
 
 async def _dashboard_events(owner_id: int, maker: async_sessionmaker[AsyncSession]):

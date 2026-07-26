@@ -5,13 +5,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
+from app.core.deps import get_current_user
 from app.database import get_session
 from app.models.category import Category
 from app.models.favorite import Favorite
 from app.models.market import Market
 from app.models.sale import Sale, SaleStatus
 from app.models.store import Store
-from app.models.user import User
+from app.models.user import Role, User
 from app.schemas.sale import SaleResponse
 from app.schemas.store import StoreCreate, StoreDetailResponse, StoreResponse, StoreUpdate
 
@@ -58,28 +59,25 @@ async def list_store_sales(
 
 @router.post("", response_model=StoreResponse, status_code=status.HTTP_201_CREATED, summary="매장 등록")
 async def create_store(
-    payload: StoreCreate, session: AsyncSession = Depends(get_session)
+    payload: StoreCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> Store:
     if await session.get(Category, payload.category_code) is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=errors.UNKNOWN_CATEGORY)
     if payload.market_id is not None and await session.get(Market, payload.market_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.MARKET_NOT_FOUND)
     # 1계정=1매장 — 이미 매장을 가진 점주면 거절(UNIQUE owner_id 위반 방지).
-    if payload.owner_id is not None:
-        if await session.get(User, payload.owner_id) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.USER_NOT_FOUND)
-        existing = (
-            await session.execute(
-                select(Store).where(
-                    Store.owner_id == payload.owner_id, Store.is_deleted.is_(False)
-                )
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, detail=errors.STORE_ALREADY_OWNED)
+    existing = (
+        await session.execute(
+            select(Store).where(Store.owner_id == current_user.id, Store.is_deleted.is_(False))
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=errors.STORE_ALREADY_OWNED)
     store = Store(
         market_id=payload.market_id,
-        owner_id=payload.owner_id,
+        owner_id=current_user.id,
         category_code=payload.category_code,
         name=payload.name,
         address=payload.address,
@@ -87,6 +85,7 @@ async def create_store(
         lng=payload.lng,
     )
     session.add(store)
+    current_user.role = Role.OWNER  # 매장 등록 = 점주 승격 (같은 트랜잭션)
     await session.commit()
     await session.refresh(store)
     return store
@@ -94,11 +93,16 @@ async def create_store(
 
 @router.patch("/{store_id}", response_model=StoreResponse, summary="매장 수정")
 async def update_store(
-    store_id: int, payload: StoreUpdate, session: AsyncSession = Depends(get_session)
+    store_id: int,
+    payload: StoreUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> Store:
     store = await session.get(Store, store_id)
     if store is None or store.is_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=errors.STORE_NOT_FOUND)
+    if store.owner_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=errors.FORBIDDEN)
     data = payload.model_dump(exclude_unset=True)
     if "category_code" in data and await session.get(Category, data["category_code"]) is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=errors.UNKNOWN_CATEGORY)

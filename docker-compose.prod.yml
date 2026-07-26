@@ -1,5 +1,33 @@
 # 배포용 풀스택. 실행: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# api.solde.co.kr 로 들어오는 트래픽을 Traefik 이 TLS 종단 후 app:8000 으로 라우팅.
+# 전제: api.solde.co.kr A 레코드 → 이 VM IP, 방화벽 80/443 오픈.
 services:
+  traefik:
+    image: traefik:v3.1
+    restart: always
+    command:
+      # 도커 라벨로 라우팅 대상 자동 발견. 라벨 없는 서비스는 노출 안 함.
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # 평문 요청은 전부 https 로 리다이렉트.
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt 자동 발급(HTTP-01 챌린지, 80 포트 사용).
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # 컨테이너 자동 발견용. 읽기 전용.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 발급받은 인증서 영속화. 재배포에도 재발급 안 하도록.
+      - letsencrypt:/letsencrypt
+
   app:
     build: .
     restart: always
@@ -11,12 +39,19 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-    ports:
-      - "8000:8000"
+    # 8000 을 호스트로 직접 노출하지 않는다. Traefik 이 내부 네트워크로만 접근.
+    expose:
+      - "8000"
     # 업로드 이미지 영속화. 컨테이너 재시작·재배포에도 파일 유지.
     volumes:
       - uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`api.solde.co.kr`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=le"
+      - "traefik.http.services.app.loadbalancer.server.port=8000"
 
   # 이벤트 소비 워커. 앱과 같은 이미지, 실행 명령만 다르다. 죽으면 자동 재시작.
   notification-worker:
@@ -80,3 +115,4 @@ volumes:
   redisdata:
   rabbitmqdata:
   uploads:
+  letsencrypt:

@@ -6,7 +6,6 @@ from app.models.order import OrderStatus
 
 
 class OrderCreate(BaseModel):
-    user_id: int
     sale_id: int
     quantity: int = 1
 

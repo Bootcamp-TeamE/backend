@@ -225,6 +225,9 @@ __marimo__/
 .env.local
 .env.*.local
 
+# 개인용 점주 승격 시드(계정·매장 로컬/배포 세팅 — 커밋 안 함)
+seed/promote_owner.py
+
 # AI / 에이전트 툴링
 .omc/
 .claude/

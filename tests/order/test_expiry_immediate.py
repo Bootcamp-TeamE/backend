@@ -11,18 +11,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.order import Order, OrderStatus
 from app.models.sale import Sale
+from app.models.user import User
 from app.services.order import handle_expired_key, pickup_ttl_key, reserve_ttl_key
+from tests.conftest import auth_headers
 from tests.order.helpers import seed_sale, seed_user
 
 
-async def _order(client: AsyncClient, user_id: int, sale_id: int, quantity: int = 1):
+async def _order(client: AsyncClient, user: User, sale_id: int, quantity: int = 1):
     return await client.post(
-        "/api/v1/orders", json={"user_id": user_id, "sale_id": sale_id, "quantity": quantity}
+        "/api/v1/orders",
+        json={"sale_id": sale_id, "quantity": quantity},
+        headers=auth_headers(user),
     )
 
 
-async def _pay(client: AsyncClient, order_id: int):
-    return await client.post(f"/api/v1/orders/{order_id}/pay")
+async def _pay(client: AsyncClient, order_id: int, user: User):
+    return await client.post(f"/api/v1/orders/{order_id}/pay", headers=auth_headers(user))
 
 
 def test_ttl_key_format():
@@ -35,7 +39,7 @@ async def test_reserve_key_expires_reserved_and_restores_stock(
 ):
     sale = await seed_sale(session, remaining=5)
     user = await seed_user(session)
-    order_id = (await _order(client, user.id, sale.id, quantity=2)).json()["id"]
+    order_id = (await _order(client, user, sale.id, quantity=2)).json()["id"]
 
     result = await handle_expired_key(session, reserve_ttl_key(order_id))
     assert result == ("expired", order_id)
@@ -51,8 +55,8 @@ async def test_reserve_key_expires_reserved_and_restores_stock(
 async def test_reserve_key_noop_on_paid(client: AsyncClient, session: AsyncSession):
     sale = await seed_sale(session, remaining=5)
     user = await seed_user(session)
-    order_id = (await _order(client, user.id, sale.id, quantity=2)).json()["id"]
-    await _pay(client, order_id)
+    order_id = (await _order(client, user, sale.id, quantity=2)).json()["id"]
+    await _pay(client, order_id, user)
 
     assert await handle_expired_key(session, reserve_ttl_key(order_id)) is None  # 이미 결제됨
 
@@ -60,8 +64,8 @@ async def test_reserve_key_noop_on_paid(client: AsyncClient, session: AsyncSessi
 async def test_pickup_key_refunds_paid(client: AsyncClient, session: AsyncSession):
     sale = await seed_sale(session, remaining=5, deadline_hours=2)
     user = await seed_user(session)
-    order_id = (await _order(client, user.id, sale.id, quantity=1)).json()["id"]
-    await _pay(client, order_id)
+    order_id = (await _order(client, user, sale.id, quantity=1)).json()["id"]
+    await _pay(client, order_id, user)
 
     result = await handle_expired_key(session, pickup_ttl_key(order_id))
     assert result == ("refunded", order_id)
@@ -74,7 +78,7 @@ async def test_pickup_key_refunds_paid(client: AsyncClient, session: AsyncSessio
 async def test_pickup_key_noop_on_reserved(client: AsyncClient, session: AsyncSession):
     sale = await seed_sale(session, remaining=5)
     user = await seed_user(session)
-    order_id = (await _order(client, user.id, sale.id)).json()["id"]  # 결제 전
+    order_id = (await _order(client, user, sale.id)).json()["id"]  # 결제 전
 
     assert await handle_expired_key(session, pickup_ttl_key(order_id)) is None
 
@@ -82,7 +86,7 @@ async def test_pickup_key_noop_on_reserved(client: AsyncClient, session: AsyncSe
 async def test_reserve_key_idempotent(client: AsyncClient, session: AsyncSession):
     sale = await seed_sale(session, remaining=5)
     user = await seed_user(session)
-    order_id = (await _order(client, user.id, sale.id, quantity=2)).json()["id"]
+    order_id = (await _order(client, user, sale.id, quantity=2)).json()["id"]
 
     assert await handle_expired_key(session, reserve_ttl_key(order_id)) == ("expired", order_id)
     assert await handle_expired_key(session, reserve_ttl_key(order_id)) is None  # 재호출 no-op

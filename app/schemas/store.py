@@ -8,7 +8,6 @@ class StoreCreate(BaseModel):
     lng: float
     market_id: int | None = None
     address: str | None = None
-    owner_id: int | None = None  # 로그인 전 stub — 등록 매장을 점주에 귀속(1계정=1매장)
 
 
 class StoreUpdate(BaseModel):
