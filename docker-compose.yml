@@ -86,7 +86,7 @@ services:
       redis: { condition: service_healthy }
     command: python -m app.workers.expiry_worker
 
-  # 데모용 세일 생성·재생성. 08~18시 2시간 간격(KST)으로 마감 지난 세일을 되살린다.
+  # 데모용 세일 생성·재생성. 짝수 정각(00·02·…·22 KST) 2시간 간격 + 기동 시 1회로 마감 지난 세일을 되살린다.
   sale-generator:
     build: .
     restart: unless-stopped

@@ -62,7 +62,7 @@ services:
         condition: service_started
     command: python -m app.workers.fanout_worker
 
-  # 데모용 세일 주기 생성·재생성(08~18시 KST 2시간 간격).
+  # 데모용 세일 주기 생성·재생성. 짝수 정각(00·02·…·22 KST) 2시간 간격 + 기동 시 1회.
   sale-generator:
     build: .
     restart: always
