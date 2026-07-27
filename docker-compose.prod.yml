@@ -62,6 +62,40 @@ services:
         condition: service_started
     command: python -m app.workers.fanout_worker
 
+  # 데모용 세일 주기 생성·재생성(08~18시 KST 2시간 간격).
+  sale-generator:
+    build: .
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      postgis:
+        condition: service_healthy
+    command: python -m app.workers.sale_generator_worker
+
+  # 예약 자동 만료(5분)·픽업 노쇼 자동 환불(30분) 보장 배치.
+  expiry-worker:
+    build: .
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: python -m app.workers.expiry_worker
+
+  # Redis 키 만료 이벤트로 데드라인 정각 만료/환불(즉시 계층).
+  expiry-listener:
+    build: .
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: python -m app.workers.expiry_listener
+
   postgis:
     image: postgis/postgis:16-3.4
     restart: always
