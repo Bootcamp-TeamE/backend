@@ -65,6 +65,8 @@ PRODUCT_IMAGE_SOURCES: dict[str, tuple[str, str]] = {
     "삼겹살": ("samgyeopsal.jpg", f"{_C}/thumb/e/e1/Korean.cuisine-Samgyeopsal-01.jpg/500px-Korean.cuisine-Samgyeopsal-01.jpg"),
     "목살": ("pork_neck.jpg", f"{_C}/thumb/7/7c/Pork_neck_meat_with_salad.jpg/500px-Pork_neck_meat_with_salad.jpg"),
     "등심": ("beef_sirloin.jpeg", "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/%EB%8C%80%ED%86%B5%EB%A0%B9%EC%83%81%EC%97%90_%EB%B9%9B%EB%82%98%EB%8A%94_%ED%96%89%EC%A3%BC%ED%95%9C%EC%9A%B0.jpg/960px-%EB%8C%80%ED%86%B5%EB%A0%B9%EC%83%81%EC%97%90_%EB%B9%9B%EB%82%98%EB%8A%94_%ED%96%89%EC%A3%BC%ED%95%9C%EC%9A%B0.jpg"),
+    # promote_owner 정육 데모 품목. 한우 국거리는 한우(등심) 이미지 재사용.
+    "한우 국거리": ("beef_sirloin.jpeg", "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/%EB%8C%80%ED%86%B5%EB%A0%B9%EC%83%81%EC%97%90_%EB%B9%9B%EB%82%98%EB%8A%94_%ED%96%89%EC%A3%BC%ED%95%9C%EC%9A%B0.jpg/960px-%EB%8C%80%ED%86%B5%EB%A0%B9%EC%83%81%EC%97%90_%EB%B9%9B%EB%82%98%EB%8A%94_%ED%96%89%EC%A3%BC%ED%95%9C%EC%9A%B0.jpg"),
     "불고기": ("bulgogi.jpg", f"{_C}/thumb/7/76/Bulgogi_3.jpg/500px-Bulgogi_3.jpg"),
     "닭다리살": ("chicken_drumstick.jpg", "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/HK_food_raw_chicken_legs_February_2020_SS2_01.jpg/960px-HK_food_raw_chicken_legs_February_2020_SS2_01.jpg"),
     "고등어": ("mackerel.jpg", f"{_C}/thumb/8/88/Maquereaux_etal.jpg/500px-Maquereaux_etal.jpg"),
@@ -114,7 +116,13 @@ PRODUCT_IMAGES: dict[str, str] = {
 
 
 def image_url_for(title: str) -> str | None:
-    return PRODUCT_IMAGES.get(title)
+    url = PRODUCT_IMAGES.get(title)
+    if url:
+        return url
+    for key, mapped in PRODUCT_IMAGES.items():
+        if title.startswith(key):
+            return mapped
+    return None
 
 
 DISCOUNT_MIN, DISCOUNT_MAX = 0.30, 0.50

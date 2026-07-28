@@ -97,6 +97,13 @@ def test_image_url_is_local_uploads_path_per_title():
     assert gen.image_url_for("존재하지않는상품") is None  # 매핑 없으면 None
 
 
+def test_image_url_matches_title_with_size_suffix():
+    assert gen.image_url_for("삼겹살 500g") == gen.image_url_for("삼겹살")
+    assert gen.image_url_for("목살 500g") == gen.image_url_for("목살")
+    assert gen.image_url_for("한우 국거리 300g") == "/uploads/products/beef_sirloin.jpeg"
+    assert gen.image_url_for("없는상품 100g") is None
+
+
 # ── DB 생성/재생성 ─────────────────────────────────────────
 
 
